@@ -32,7 +32,7 @@ keep if migback == 3
 
 * retrieve from person generated dataset
 mer 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
-    keepus(pgnation) keep(match) nogen
+    keepus(pgnation) keep(master match) nogen
 
 * retrieve pgnation for indirect migration background
 *   excluding German, Ex-Jugoslavian and No-Nationality
@@ -48,7 +48,7 @@ g aux2 = aux1 if syear == maxyear
 bys pid: egen aux3 = mode(aux1)
 * copy last available value of pgnation for all waves
 bys pid: egen aux4 = mode(aux2)
-* subsitute for last available value of pgnation if same frequency
+* substitute for last available value of pgnation if same frequency
 replace aux3 = aux4 if missing(aux3)
 * retrieve pgnation when there is Ex-Jugoslavia as the only option
 g aux5 = pgnation if pgnation == 3
@@ -58,6 +58,7 @@ bys pid: egen aux6 = mode(aux5)
 replace aux3 = aux6 if missing(aux3)
 
 g ancestry1 = aux3
+* also keep corigin for the sixth step and for the label
 keep pid syear ancestry*
 
 ********************************************************************************
@@ -66,7 +67,7 @@ keep pid syear ancestry*
 ********************************************************************************
 
 mer 1:1 pid syear using "${SOEP_PATH}/pbrutto.dta", ///
-    keepus(pnat* pherkft) keep(match) nogen
+    keepus(pnat* pherkft) keep(master match) nogen
 
 * create wildcards for the variables of interest
 local stubvar = "pnat_v1 pnat_v2 pnat2 pherkft"
@@ -92,7 +93,7 @@ forvalues i = 1/`n' {
     bys pid: egen aux`i'3 = mode(aux`i'1)
     * copy last recorded value of variable by pid
     bys pid: egen aux`i'4 = mode(aux`i'2)
-    * subsitute for last available value if same frequency
+    * substitute for last available value if same frequency
     replace aux`i'3 = aux`i'4 if missing(aux`i'3)
     * Ex-Jugoslavia sub-classification not available
     g aux`i'5 = ``i'' if ``i'' == 3
@@ -108,16 +109,12 @@ keep pid syear ancestry*
 
 ********************************************************************************
 * Third-Fifth Step: Include Previous Nationality and Country Born In + Country *
-*   of Second Nationality from the longitudinal person dataset (pl) and from   *
-*   the Wave S Second Nationality variable (sp11702)
+*   of Second Nationality from the longitudinal person dataset (pl)            *
+*   This step includes the variable sp11702 from SOEP Wave S                   *
 ********************************************************************************
 
 mer 1:1 pid syear using "${SOEP_PATH}/pl.dta", ///
-    keepus(plj0018 plf0011 plj0023) keep(match) nogen
-
-* TODO: Finish It!
-mer 1:1 pid syear using "${SOEP_PATH_RAW}/sp.dta", ///
-    keepus(sp11702) keep(match) nogen
+    keepus(plj0018 plf0011 plj0023) keep(master match) nogen
 
 * exclude Other Country labelled for Country Born In in pl.dta
 replace plf0011 = -2 if plf0011 == 7
@@ -140,7 +137,7 @@ forvalues i = 1/`n' {
     bys pid: egen aux`i'3 = mode(aux`i'1)
     * copy last recorded value of variable by pid
     bys pid: egen aux`i'4 = mode(aux`i'2)
-    * subsitute for last available value if same frequency
+    * substitute for last available value if same frequency
     replace aux`i'3 = aux`i'4 if missing(aux`i'3)
     * Ex-Jugoslavia sub-classification not available
     g aux`i'5 = ``i'' if ``i'' == 3
@@ -160,11 +157,92 @@ keep pid syear ancestry*
 *   children that were living in the household from children dataset (kidlong) *
 ********************************************************************************
 
-* merge 1:1 pid syear using "${SOEP_PATH}/kidlong.dta", ///
-*     keepus(k_nat) nogen
+merge 1:1 pid syear using "${SOEP_PATH}/kidlong.dta", ///
+     keepus(k_nat) keep(master match) nogen
 
-* apparently we do not retrieve any additional information from the
-* parents' questionnaire on the kids, for the single waves A and E
+* retrieve variable for indirect migration background
+*   excluding German, Ex-Jugoslavian and No-Nationality
+g aux1 = k_nat if ///
+    k_nat > 1 & ///
+    k_nat != 3 & k_nat != 98
 
+* get last wave where k_nat is available after controls
+bys pid: egen maxyear = max(syear) if !missing(aux1)
+* save last available value of k_nat
+g aux2 = aux1 if syear == maxyear
 
+* copy mode of k_nat for all waves
+bys pid: egen aux3 = mode(aux1)
+* copy last available value of k_nat for all waves
+bys pid: egen aux4 = mode(aux2)
+* substitute for last available value of k_nat if same frequency
+replace aux3 = aux4 if missing(aux3)
+* retrieve k_nat when there is Ex-Jugoslavia as the only option
+g aux5 = k_nat if k_nat == 3
+* copy Ex-Jugoslavia if still missing
+bys pid: egen aux6 = mode(aux5)
+* replace when Ex-Jugoslavia is the only option
+replace aux3 = aux6 if missing(aux3)
 
+g ancestry4 = aux3
+keep pid syears ancestry*
+
+********************************************************************************
+* Sixth-Seventh Step: Cross-Checking the Countries of Birth and Nationalities. *
+*   mentioned in the different waves (from A to J) to see whether they deviate *
+*   from the main country of birth corigin and the previous nationalities.     *
+********************************************************************************
+
+local stubs = "a b c d e f g h i j"
+local vars1 = "ap61 bp89 cp92 dp94 ep87b fp107b gp107 hp107 ip107 jp107"
+local vars2 = ///
+    "ap62a bp98a cp98ab dp95a ep88a fp105a gp105a hp105a ip105a jp105a"
+
+local n: word count `stubs'
+
+tokenize "`stubs'"
+forvalues i = 1/`n' {
+    * merge single wave info about nationality
+    merge 1:1 pid syear using "${SOEP_PATH_RAW}/``i''p.dta", ///
+    keepus(`: word `i' of `vars1'') keep(master match) nogen
+    * merge single wave info about country of origin
+    merge 1:1 pid syear using "${SOEP_PATH_RAW}/``i''pausl.dta", ///
+    keepus(`: word `i' of `vars2'') keep(master match) nogen
+}
+
+egen nat_raw = rowtotal(`vars1'), m
+* compare with corigin ()
+egen cborn_raw = rowtotal(`vars2'), m
+
+local stubs = "nat cborn"
+foreach i in `stubs' {
+    * retrieve variable for indirect migration background
+    *   excluding German, Ex-Jugoslavian, No-Nationality and ex-GDR
+    g aux_`i'_1 = `i'_raw if ///
+        `i' > 1 & `i' != 3 & `i' != 98 & `i' != 7
+
+    * get last wave where the variable is available after controls
+    bys pid: egen maxyear_`i' = max(syear) if !missing(aux_`i'_1)
+    * save last available value of the considered variable
+    g aux_`i'_2 = aux_`i'_1 if syear == maxyear_`i'
+
+    * count frequencies of the variable by pid
+    bys pid: egen aux_`i'_3 = mode(aux_`i'_1)
+    * copy last recorded value of variable by pid
+    bys pid: egen aux_`i'_4 = mode(aux_`i'_2)
+    * substitute for last available value if same frequency
+    replace aux_`i'_3 = aux_`i'_4 if missing(aux_`i'_3)
+    * Ex-Jugoslavia sub-classification not available
+    g aux_`i'_5 = `i'_raw if `i'_raw == 3
+    bys pid: egen aux_`i'_6 = mode(aux_`i'_5)
+    replace aux_`i'_3 = aux_`i'_6 if missing(aux_`i'_3)
+
+    rename aux_`i'_3 `i'
+
+}
+rename (nat cborn) (ancestry6 ancestry7)
+keep pid syear ancestry*
+
+********************************************************************************
+* Eighth Step: Cross-Generational Linking with the bioparen datasets.          *
+********************************************************************************
