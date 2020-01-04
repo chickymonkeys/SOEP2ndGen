@@ -114,52 +114,6 @@ if ${RUN_TESTS} {
 * create workspace directories and pathnames
 qui do "${SRC_PATH}/2ndgen/2ndgen.do"
 
-* for step with single waves use update on a same-named variable
-
-* copy the label of corigin
-
-* we will need to double-check with other info, I don't trust this procedure
-
-* split between direct and indirect background (we can trust migback)
-* no problems of consistency with corigin within panel
-* need to split Eastern Europe
-* corigin for 2nd gen is Germany
-* g dancestry = corigin if migback == 2
-
-* then we need parents
-
-* corigin : country of origin
-* eastern europe is agglomerated (sigh)
-* corigininfo : check inconsistencies 
-
-* arefback : indirect[3]/direct[2]/no[1] refugee experience
-* admissible retroactive information (keep arefinfo)
-
-* migback : indirect[3]/direct[2]/no[1] migration background
-
-* immiyear : year moved to Germany
-
-* germborn : born in germany or immigrant < 1950
-
-
-
-* from pgen (generated) : pgstatus_refu pgstatus_asyl pgnation 
-
-* from pbrutto : pnat
-
-* from pl : plj0024 (german nationality since when),
-*   plj0006 (emigrant of german descent)
-
-* from sp (raw) : sp11702
-
-* from akind (raw) : ak07a (nationality of children)
-* from ekind (raw) : ek03a (nationality of children)
-
-* from ap: ap61 (nationality for double check)
-* from bp: 
-
-* from bioparen : fnat
-
 ********************************************************************************
 * Closing Commands                                                             *
 ********************************************************************************
