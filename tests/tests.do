@@ -16,3 +16,5 @@ if _rc {
     di "Pathnames not defined (network error?)"
     exit, clear
 }
+
+* some statistics 

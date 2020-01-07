@@ -98,6 +98,9 @@ gl T_STRING = subinstr("${T_STRING}", " ", "_", .)
 * open log file
 capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 
+* run the graph utility .do file to set up the graph styles
+qui do "${BASE_PATH}/util/gconfig.do"
+
 ********************************************************************************
 * Run Test .do Files                                                           *
 ********************************************************************************
@@ -111,8 +114,10 @@ if ${RUN_TESTS} {
 * SOEP Data Second-Generation Panel Build                                      *
 ********************************************************************************
 
-* create workspace directories and pathnames
+* create the panel of second-generation individuals with country of ancestry
 qui do "${SRC_PATH}/2ndgen/2ndgen.do"
+
+* create the households in analysis through household head
 
 ********************************************************************************
 * Closing Commands                                                             *
