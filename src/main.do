@@ -88,6 +88,18 @@ gl SOEP_PATH_RAW = "${VIR_DRIVE}/soep/raw"
 adopath + "${SRC_PATH}/ado"
 
 ********************************************************************************
+* Dependencies                                                                 *
+********************************************************************************
+
+* graph dependencies
+capture ssc install grstyle
+capture ssc install palettes
+capture ssc install colrspace
+
+* occupation classes (eventually)
+capture ssc install iscogen
+
+********************************************************************************
 * Log Opening and Settings                                                     *
 ********************************************************************************
 

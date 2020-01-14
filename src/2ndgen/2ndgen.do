@@ -16,6 +16,17 @@ loc filename = "2ndgen"
 * open log file
 capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 
+********************************************************************************
+* Program: sgenmode                                                            *
+* Description: this program allows us to identify from a variable containing   *
+*   nationality, citizenship, or other information about ancestry the validity *
+*   of the information and to copy it for the different waves starting from    *
+*   the information of migration background in ppathl, which is retroactive.   *
+*   In particular, we are trying to split Ex-Yugoslavia and Eastern Europe     *
+*   from the general information, filtering for non-relevant flags. We         *
+*   preserve the most recurrent information between the waves or, in case of   *
+*   equivalent frequency, the most recent information.                         *
+********************************************************************************
 capture program drop sgenmode
 program define sgenmode
     version 10
@@ -38,7 +49,7 @@ program define sgenmode
     confirm new var `generate';
     tempvar aux1 aux2 aux3 aux4 aux5 aux6 maxyear;
     * retrieve variable for indirect migration background;
-    *   excluding German, Ex-Jugoslavian, No-Nationality, Unknown, ex-GDR;
+    *   excluding German, Ex-Yugoslavian, No-Nationality, Unknown, ex-GDR;
     *   ethnic minorities, Non-German Category (pnat_v2);
     g `aux1' = `varlist' if
         `varlist'  > 1   & 
@@ -55,11 +66,11 @@ program define sgenmode
     bys `i' : egen `aux4' = mode(`aux2');
     * substitute for the last available value if same frequency;
     replace `aux3' = `aux4' if missing(`aux3');
-    * Ex-Jugoslavia sub-classification not available;
+    * Ex-Yugoslavia sub-classification not available;
     g `aux5' = `varlist' if `varlist' == 3;
-    * copy Ex-Jugoslavia if still missing;
+    * copy Ex-Yugoslavia if still missing;
     bys `i' : egen `aux6' = mode(`aux5');
-    * replace when Ex-Jugoslavia is the only option;
+    * replace when Ex-Yugoslavia is the only option;
     replace `aux3' = `aux6' if missing(`aux3');
 
     * output variable;
@@ -68,8 +79,8 @@ program define sgenmode
 end
 
 ********************************************************************************
-* First Step: Tracking Data in ppathl .dta file and generated dataset (pgen)   *
-*   to identify whether individuals with indirect migration background have a  *
+* Step 1: Tracking Data in ppathl .dta file and generated dataset (pgen) to    *
+*   identify whether individuals with indirect migration background have a     *
 *   foreign nationality that points to their country of ancestry.              *
 ********************************************************************************
 
@@ -92,8 +103,8 @@ sgenmode pgnation, gen(ancestry1) i(pid) t(syear)
 keep pid syear ancestry*
 
 ********************************************************************************
-* Second-Fifth Step: Include Nationality/Citizenship and Country Born In +     *
-*   Country of Second Nationality from the long raw dataset (pbrutto)          *
+* Step 2 (5): Include Nationality/Citizenship and Country Born In + Country of *
+*   Second Nationality from the long raw dataset (pbrutto).                    *
 ********************************************************************************
 
 mer 1:1 pid syear using "${SOEP_PATH}/pbrutto.dta", ///
@@ -116,9 +127,9 @@ g ancestry5 = temp3
 keep pid syear ancestry*
 
 ********************************************************************************
-* Third-Fifth Step: Include Previous Nationality and Country Born In + Country *
-*   of Second Nationality from the longitudinal person dataset (pl)            *
-*   This step includes the variable sp11702 from SOEP Wave S                   *
+* Step 3 (5): Include Previous Nationality and Country Born In + Country of    *
+*   Second Nationality from the longitudinal person dataset (pl).              *
+*   This step includes the variable sp11702 from SOEP Wave S.                  *
 ********************************************************************************
 
 mer 1:1 pid syear using "${SOEP_PATH}/pl.dta", ///
@@ -142,8 +153,8 @@ replace ancestry5 = temp3 if (ancestry5 == 3 & ///
 keep pid syear ancestry*
 
 ********************************************************************************
-* Fourth Step: Information provided by Household Head on the citizenships of   *
-*   children that were living in the household from children dataset (kidlong) *
+* Step 4: Information provided by Household Head on the citizenships of        *
+*   that were living in the household from children dataset (kidlong).         *
 ********************************************************************************
 
 merge 1:1 pid syear using "${SOEP_PATH}/kidlong.dta", ///
@@ -152,9 +163,9 @@ merge 1:1 pid syear using "${SOEP_PATH}/kidlong.dta", ///
 sgenmode k_nat, gen(ancestry4) i(pid) t(syear)
 
 ********************************************************************************
-* Sixth-Seventh Step: Cross-Checking the Countries of Birth and Nationalities. *
-*   mentioned in the different waves (from A to J) to see whether they deviate *
-*   from the main country of birth and the previous nationalities.             *
+* Step 6-7: Cross-Checking the Countries of Birth and Nationalities mentioned  *
+*   in the different waves (from A to J) to see whether they deviate from the  *
+*   main country of birth and the previous nationalities.                      *
 ********************************************************************************
 
 local stubs = "a b c d e f g h i j"
@@ -189,8 +200,8 @@ tempfile prebio
 save `prebio'
 
 ********************************************************************************
-* Eighth Step: Cross-Generational Linking with the bioparen datasets in order  *
-*   to retrieve the country of origin of the parents from the variable ?origin *
+* Step 8: Cross-Generational Linking with the bioparen datasets in order to    *
+*   retrieve the country of origin of the parents from the variable ?origin    *
 *   which gives the country of ancestry for the second-generation individual   *
 *   (maternal ancestry > paternal ancestry), and same procedure where country  *
 *   of origin is not available.                                                *
@@ -378,41 +389,38 @@ forvalues i = 2/8 {
         (!missing(ancestry) & ancestry != 222)) | missing(ancestry)
 }
 
-* save some demographics from ppathl to calculate age and links
-merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
-    keepus(corigin sex gebjahr hid gebmonat phrf piyear) keep(master match) nogen
+* there is still stuff to do with Ex-Yugoslavia and Eastern Europe:
+*   final corrections Ex-Yugoslavia = Serbia, Eastern Europe = Poland
+replace ancestry = 165 if ancestry == 3
+replace ancestry = 22  if ancestry == 222
+* Merge Benelux with Belgium
+replace ancestry = 117 if ancestry == 12
+
+* correct for no nationality residuals eventually
+drop if ancestry == 98
+
 * retrieve pgnation to copy the label
 merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
     keepus(pgnation) keep(master match) nogen
-* retrieve month of interview from pl dataset
-merge 1:1 pid syear using "${SOEP_PATH}/pl.dta", ///
-    keepus(pmonin) keep(master match) nogen
-
-replace gebjahr  = .     if gebjahr  < 0
-replace gebmonat = .     if gebmonat < 0
-replace pmonin   = .     if pmonin   < 0
-replace piyear   = .     if piyear   < 0
-replace piyear   = syear if missing(piyear)
-
-* generate age using interview timing and year and month of birth
-g age = piyear - gebjahr if gebmonat < pmonin
-replace age = piyear - gebjahr - 1 if gebmonat >= pmonin
-replace age = piyear - gebjahr     if missing(pmonin) | missing(gebmonat)
-
 label copy pgnation ancestry
-label copy pgnation_EN ancestry_EN
 label values ancestry ancestry
+label language EN
+label copy pgnation_EN ancestry_EN
 label values ancestry ancestry_EN
 
-* there is still stuff to do with Ex-Jugoslavia and Eastern Europe
-* Probably Ex-Jugoslavia = Serbia and Eastern Europe probably Poland
-replace ancestry = 165 if ancestry == 3
-replace ancestry = 22  if ancestry == 222
+label variable ancestry "Country of Ancestry"
+label variable fnative  "Father is German"
+label variable mnative  "Mother is German"
+label variable fsecgen  "Father is Second-Generation Immigrant"
+label variable msecgen  "Mother is Second Generation Immigrant"
 
-* Merge Benelux with Belgium
-replace ancestry = 117 if ancestry == 12
+label language DE
+
 * There are some intra-regions like Kurdistan, Chechnya
+order pid syear ancestry ?native ?secgen
+keep  pid syear ancestry ?native ?secgen
+drop if missing(ancestry)
 
-keep pid syear ancestry ?nr ?native ?secgen gebjahr age
+label data "SOEP v34 Panel of Second-Generation Individuals with Ancestry"
 compress
 save "${DATA_PATH}/2ndgenindv34soep.dta", replace

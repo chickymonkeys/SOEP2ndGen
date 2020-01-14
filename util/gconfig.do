@@ -6,9 +6,6 @@
 *                                                                              *
 ********************************************************************************
 
-capture ssc install grstyle, replace
-capture ssc install palettes, replace
-capture ssc install colrspace, replace
 * grstyle initialisation
 grstyle init
 
@@ -26,8 +23,14 @@ end
 * basic scheme
 grstyle set plain, grid horizontal compact
 
-* general color set set as 538
+* general color set as lean (monochrome)
 grstyle set color lean
+
+* general symbol set as lean
+grstyle set symbol lean
+
+* general line pattern set as lean
+grstyle set lpattern lean
 
 * axis options
 grstyle set size small: tick_label
@@ -38,15 +41,14 @@ grstyle set size small: axis_title
 grstyle set linewidth thin: plineplot
 
 * markers options
-grstyle set color lean, opacity(80): p#markfill
-grstyle set color lean, opacity(0):  p#markline
-grstyle set symbol d
+*grstyle set color, opacity(80): p#markfill
+*grstyle set color, opacity(0):  p#markline
 grstyle set size vsmall: p#markfill
 grstyle set size vsmall: p#markline
 
 * histogram options
-grstyle set color, opacity(80): histogram
-grstyle set color, opacity(50): histogram_line
+*grstyle set color, opacity(80): histogram
+*grstyle set color, opacity(50): histogram_line
 grstyle set size vsmall: histogram
 
 * graph bar opsions
@@ -55,7 +57,7 @@ grstyle set color 538, opacity(50): p#barline
 grstyle set size small: p#bar
 
 * transparent CIs
-grstyle set ci
+grstyle set ci, opacity(40)
 
 * legend settings
 grstyle set legend 12, klength(large) nobox
