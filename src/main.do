@@ -38,21 +38,31 @@ gl WORK_LOCAL = 1 /* = 1 when we want to work locally with the dataset */
 
 * rule-of-thumb : pathnames do not finish with slash
 gl DIR_NAME   = "DebtCulture"
-gl MEGA_PATH  = "Documents/Research/Projects"
+gl PROJ_PATH  = "Documents/Projects"
 
 if "`c(os)'" == "Windows" {
     * define cloud parent folder location
-    gl MEGA_DIR  = "C:/Users/`c(username)'/Documents"
-    * define virtual drive pathname (depending on network)
-    gl VIR_DRIVE = "M:"
+    gl PROJ_DIR  = "C:/Users/`c(username)'"
+
+    if ${WORK_LOCAL} == 1 {
+        * just in desperate low connection cases
+        gl VIR_DRIVE = "${PROJ_DIR}/Documents"
+    }
+
+    else {
+        * define virtual drive pathname (depending on network)
+        gl VIR_DRIVE = "M:"
+    }
+
 }
 
 else if "`c(os)'" == "MacOSX" {
 	* define cloud parent folder location
-	gl MEGA_DIR = "/Users/`c(username)'"
+	gl PROJ_DIR = "/Users/`c(username)'"
 	
     if ${WORK_LOCAL} == 1 {
-        gl VIR_DRIVE = "${MEGA_DIR}/Documents"
+        * just in desperate low connection cases
+        gl VIR_DRIVE = "${PROJ_DIR}/Documents"
     }
 
     else {
@@ -67,7 +77,7 @@ else {
 }
 
 * define base directory pathname
-gl BASE_PATH = "${MEGA_DIR}/MEGA/${MEGA_PATH}/${DIR_NAME}"
+gl BASE_PATH = "${PROJ_DIR}/${PROJ_PATH}/${DIR_NAME}"
 
 * check pathname
 capture cd "${BASE_PATH}"
@@ -78,7 +88,7 @@ if _rc {
 }
 
 * create workspace directories and pathnames
-qui do "${BASE_PATH}/util/workdir.do"
+qui do "${BASE_PATH}/src/util/workdir.do"
 
 * define dataset pathnames
 gl SOEP_PATH     = "${VIR_DRIVE}/soep"
@@ -111,7 +121,7 @@ gl T_STRING = subinstr("${T_STRING}", " ", "_", .)
 capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 
 * run the graph utility .do file to set up the graph styles
-qui do "${BASE_PATH}/util/gconfig.do"
+qui do "${SRC_PATH}/util/gconfig.do"
 
 ********************************************************************************
 * Run Test .do Files                                                           *
