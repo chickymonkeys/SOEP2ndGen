@@ -6,8 +6,8 @@
 ********************************************************************************
 
 local base   = "${BASE_PATH}"
-local stubs  = "res tests log src util data"
-local gnames = "OUT TEST LOG SRC UTIL DATA"
+local stubs  = "res tests log src data"
+local gnames = "OUT TEST LOG SRC DATA"
 local n: word count `gnames'
 
 tokenize "`gnames'"

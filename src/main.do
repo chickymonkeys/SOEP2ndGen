@@ -30,44 +30,50 @@ set matsize 11000
 ********************************************************************************
 gl RUN_TESTS  = 0 /* = 1 when tests are (the only) allowed to be run */
 gl MAKE_DIR   = 0 /* = 1 when need to create workspace folders */
-gl WORK_LOCAL = 1 /* = 1 when we want to work locally with the dataset */
+gl WORK_LOCAL = 0 /* = 1 when we want to work locally with the dataset */
 
 ********************************************************************************
 * Environment Variables Definition                                             *
 ********************************************************************************
 
 * rule-of-thumb : pathnames do not finish with slash
-gl DIR_NAME   = "DebtCulture"
-gl PROJ_PATH  = "Documents/Projects"
+gl DIR_NAME = "DebtCulture"
+gl PROJ_DIR = "Documents/Projects"
 
 if "`c(os)'" == "Windows" {
-    * define cloud parent folder location
-    gl PROJ_DIR  = "C:/Users/`c(username)'"
+    * define parent folder location
+    gl HOME_DIR  = "C:/Users/`c(username)'"
+    
+    * define cloud folder location
+    gl MEGA_DIR  = "${HOME_DIR}/Documents"
 
     if ${WORK_LOCAL} == 1 {
         * just in desperate low connection cases
-        gl VIR_DRIVE = "${PROJ_DIR}/Documents"
+        gl VIR_DRIVE = "${HOME_DIR}/Documents/Data"
     }
 
     else {
         * define virtual drive pathname (depending on network)
-        gl VIR_DRIVE = "M:"
+        gl VIR_DRIVE = "M:/Data"
     }
 
 }
 
 else if "`c(os)'" == "MacOSX" {
 	* define cloud parent folder location
-	gl PROJ_DIR = "/Users/`c(username)'"
-	
+	gl HOME_DIR = "/Users/`c(username)'"
+    
+    * define cloud folder location
+    gl MEGA_DIR  = "${HOME_DIR}"
+
     if ${WORK_LOCAL} == 1 {
         * just in desperate low connection cases
-        gl VIR_DRIVE = "${PROJ_DIR}/Documents"
+        gl VIR_DRIVE = "${HOME_DIR}/Documents/Data"
     }
 
     else {
         * connect to VALUTA network drive through VPN
-        gl VIR_DRIVE = "/Volumes/s13903"
+        gl VIR_DRIVE = "/Volumes/s13903/Data"
     }
 }
 
@@ -77,7 +83,7 @@ else {
 }
 
 * define base directory pathname
-gl BASE_PATH = "${PROJ_DIR}/${PROJ_PATH}/${DIR_NAME}"
+gl BASE_PATH = "${HOME_DIR}/${PROJ_DIR}/${DIR_NAME}"
 
 * check pathname
 capture cd "${BASE_PATH}"
@@ -90,9 +96,15 @@ if _rc {
 * create workspace directories and pathnames
 qui do "${BASE_PATH}/src/util/workdir.do"
 
+* create utility directory path
+gl UTIL_PATH = "${SRC_PATH}/util" 
+
 * define dataset pathnames
-gl SOEP_PATH     = "${VIR_DRIVE}/soep"
-gl SOEP_PATH_RAW = "${VIR_DRIVE}/soep/raw"
+gl SOEP_PATH     = "${VIR_DRIVE}/SOEP"
+gl SOEP_PATH_RAW = "${VIR_DRIVE}/SOEP/raw"
+
+* create data directory path (outside git repository in the cloud)
+gl DATA_PATH = "${HOME_DIR}/MEGA/Datasets/projects/" + "`=lower(${DIR_NAME})'"
 
 * add local source directory to adopath (in case of ad-hoc .ado)
 adopath + "${SRC_PATH}/ado"
@@ -121,7 +133,7 @@ gl T_STRING = subinstr("${T_STRING}", " ", "_", .)
 capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 
 * run the graph utility .do file to set up the graph styles
-qui do "${SRC_PATH}/util/gconfig.do"
+qui do "${UTIL_PATH}/gconfig.do"
 
 ********************************************************************************
 * Run Test .do Files                                                           *
