@@ -30,7 +30,7 @@ set matsize 11000
 ********************************************************************************
 gl RUN_TESTS  = 0 /* = 1 when tests are (the only) allowed to be run */
 gl MAKE_DIR   = 0 /* = 1 when need to create workspace folders */
-gl WORK_LOCAL = 0 /* = 1 when we want to work locally with the dataset */
+gl WORK_LOCAL = 1 /* = 1 when we want to work locally with the dataset */
 
 ********************************************************************************
 * Environment Variables Definition                                             *
@@ -38,42 +38,41 @@ gl WORK_LOCAL = 0 /* = 1 when we want to work locally with the dataset */
 
 * rule-of-thumb : pathnames do not finish with slash
 gl DIR_NAME = "DebtCulture"
-gl PROJ_DIR = "Documents/Projects"
 
 if "`c(os)'" == "Windows" {
-    * define parent folder location
-    gl HOME_DIR  = "C:/Users/`c(username)'"
+    * define project parent folder location (common drive)
+    gl HOME_DIR = "D:/Projects"
     
-    * define cloud folder location
-    gl MEGA_DIR  = "${HOME_DIR}/Documents"
+    * define cloud folder location TODO common drive WinLinux
+    gl MEGA_DATA_PATH = "D:/MEGA/Documents/Datasets/projects"
 
     if ${WORK_LOCAL} == 1 {
         * just in desperate low connection cases
-        gl VIR_DRIVE = "${HOME_DIR}/Documents/Data"
+        gl V_DRIVE = "D:/Data"
     }
 
     else {
         * define virtual drive pathname (depending on network)
-        gl VIR_DRIVE = "M:/Data"
+        gl V_DRIVE = "M:/Data"
     }
 
 }
 
 else if "`c(os)'" == "MacOSX" {
-	* define cloud parent folder location
-	gl HOME_DIR = "/Users/`c(username)'"
+	* define project parent folder location
+	gl HOME_DIR = "/Users/`c(username)'/Documents/Projects"
     
     * define cloud folder location
-    gl MEGA_DIR  = "${HOME_DIR}"
+    gl MEGA_DATA_PATH = "/Users/`c(username)'/MEGA/Documents/Datasets/projects"
 
     if ${WORK_LOCAL} == 1 {
         * just in desperate low connection cases
-        gl VIR_DRIVE = "${HOME_DIR}/Documents/Data"
+        gl V_DRIVE = "/Users/`c(username)'/Documents/Data"
     }
 
     else {
         * connect to VALUTA network drive through VPN
-        gl VIR_DRIVE = "/Volumes/s13903/Data"
+        gl V_DRIVE = "/Volumes/s13903/Data"
     }
 }
 
@@ -83,7 +82,7 @@ else {
 }
 
 * define base directory pathname
-gl BASE_PATH = "${HOME_DIR}/${PROJ_DIR}/${DIR_NAME}"
+gl BASE_PATH = "${HOME_DIR}/${DIR_NAME}"
 
 * check pathname
 capture cd "${BASE_PATH}"
@@ -100,11 +99,14 @@ qui do "${BASE_PATH}/src/util/workdir.do"
 gl UTIL_PATH = "${SRC_PATH}/util" 
 
 * define dataset pathnames
-gl SOEP_PATH     = "${VIR_DRIVE}/SOEP"
-gl SOEP_PATH_RAW = "${VIR_DRIVE}/SOEP/raw"
+gl SOEP_PATH     = "${V_DRIVE}/SOEP"
+gl SOEP_PATH_RAW = "${V_DRIVE}/SOEP/raw"
 
 * create data directory path (outside git repository in the cloud)
-gl DATA_PATH = "${HOME_DIR}/MEGA/Datasets/projects/" + "`=lower(${DIR_NAME})'"
+gl DATA_PATH = "${MEGA_DATA_PATH}/`=lower("${DIR_NAME}")'"
+if ${MAKE_DIR} {
+    !mkdir "${DATA_PATH}"
+}
 
 * add local source directory to adopath (in case of ad-hoc .ado)
 adopath + "${SRC_PATH}/ado"
@@ -117,9 +119,6 @@ adopath + "${SRC_PATH}/ado"
 capture ssc install grstyle
 capture ssc install palettes
 capture ssc install colrspace
-
-* occupation classes (eventually)
-capture ssc install iscogen
 
 ********************************************************************************
 * Log Opening and Settings                                                     *
