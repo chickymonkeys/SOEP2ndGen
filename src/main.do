@@ -61,7 +61,7 @@ if "`c(os)'" == "Windows" {
 else if "`c(os)'" == "MacOSX" {
 	* define project parent folder location
 	gl HOME_DIR = "/Users/`c(username)'/Documents/Projects"
-    
+    '
     * define cloud folder location
     gl MEGA_DATA_PATH = "/Users/`c(username)'/MEGA/Documents/Datasets/projects"
 
@@ -74,6 +74,25 @@ else if "`c(os)'" == "MacOSX" {
         * connect to VALUTA network drive through VPN
         gl V_DRIVE = "/Volumes/s13903/Data"
     }
+}
+
+else if "`c(os)'" == "Unix" {
+    * define project parent folder location
+    gl HOME_DIR = "/home/`c(username)'/Documents/Projects"
+
+    * define cloud folder location
+    gl MEGA_DATA_PATH = "/run/media/dubidub/Stargate/MEGA/Documents/Datasets/projects"
+
+    if ${WORK_LOCAL} == 1 {
+        * just in desperate low connection cases
+        gl V_DRIVE = "/home/`c(username)'/Documents/Data"
+    }
+
+    else {
+        * connect to VALUTA network drive through VPN
+        * TODO: when I manage to connect Manjaro
+    }
+
 }
 
 else {
