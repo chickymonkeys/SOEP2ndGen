@@ -25,6 +25,9 @@ set more off
 * for older version of Stata
 set matsize 11000
 
+* for Stata in Linux
+set max_memory 4g
+
 ********************************************************************************
 * Utility Flags Definition                                                     *
 ********************************************************************************
@@ -38,17 +41,18 @@ gl WORK_LOCAL = 1 /* = 1 when we want to work locally with the dataset */
 
 * rule-of-thumb : pathnames do not finish with slash
 gl DIR_NAME = "DebtCulture"
+gl MEGA_DIR =  "Documents/Datasets/projects"
 
 if "`c(os)'" == "Windows" {
     * define project parent folder location (common drive)
     gl HOME_DIR = "D:/Projects"
     
-    * define cloud folder location TODO common drive WinLinux
-    gl MEGA_DATA_PATH = "D:/MEGA/Documents/Datasets/projects"
+    * define cloud folder location
+    gl MEGA_PATH = "E:/MEGA/${MEGA_DIR}"
 
     if ${WORK_LOCAL} == 1 {
         * just in desperate low connection cases
-        gl V_DRIVE = "D:/Data"
+        gl V_DRIVE = "E:/Data"
     }
 
     else {
@@ -63,7 +67,7 @@ else if "`c(os)'" == "MacOSX" {
 	gl HOME_DIR = "/Users/`c(username)'/Documents/Projects"
     '
     * define cloud folder location
-    gl MEGA_DATA_PATH = "/Users/`c(username)'/MEGA/Documents/Datasets/projects"
+    gl MEGA_PATH = "/Users/`c(username)'/MEGA/${MEGA_DIR}"
 
     if ${WORK_LOCAL} == 1 {
         * just in desperate low connection cases
@@ -81,16 +85,16 @@ else if "`c(os)'" == "Unix" {
     gl HOME_DIR = "/home/`c(username)'/Documents/Projects"
 
     * define cloud folder location
-    gl MEGA_DATA_PATH = "/run/media/dubidub/Stargate/MEGA/Documents/Datasets/projects"
+    gl MEGA_PATH = "/run/media/stargate/MEGA/${MEGA_DIR}"
 
     if ${WORK_LOCAL} == 1 {
         * just in desperate low connection cases
-        gl V_DRIVE = "/home/`c(username)'/Documents/Data"
+        gl V_DRIVE = "/run/media/stargate/Data"
     }
 
     else {
         * connect to VALUTA network drive through VPN
-        * TODO: when I manage to connect Manjaro
+        * TODO: when I manage to connect Manjaro 
     }
 
 }
@@ -122,7 +126,7 @@ gl SOEP_PATH     = "${V_DRIVE}/SOEP"
 gl SOEP_PATH_RAW = "${V_DRIVE}/SOEP/raw"
 
 * create data directory path (outside git repository in the cloud)
-gl DATA_PATH = "${MEGA_DATA_PATH}/`=lower("${DIR_NAME}")'"
+gl DATA_PATH = "${MEGA_PATH}/`=lower("${DIR_NAME}")'"
 if ${MAKE_DIR} {
     !mkdir "${DATA_PATH}"
 }
@@ -167,7 +171,7 @@ if ${RUN_TESTS} {
 ********************************************************************************
 
 * create the panel of second-generation individuals with country of ancestry
-qui do "${SRC_PATH}/2ndgen/2ndgen.do"
+do "${SRC_PATH}/2ndgen/2ndgen.do"
 
 * create the households in analysis through household head
 
