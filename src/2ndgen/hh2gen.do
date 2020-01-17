@@ -76,26 +76,29 @@ g female = (sex == 2) if !missing(sex) | !inlist(sex, -1, -3)
 * TODO: why do we lose 3000 observations? not in pbr_exit, abroad?
 merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
     keepus(                                                                ///
-        pgfamstd  /* marital status in survey year                      */ ///  
-        pgstib    /* occupational position                              */ /// 
-        pgemplst  /* employment status                                  */ ///  
-        pglfs     /* labour force status                                */ /// 
-        pgbilzeit /* amount of education or training in years (see tab) */ ///     
-        pgpsbil   /* school-leaving degree level                        */ /// 
+        pgfamstd  /* marital status in survey year                      */ ///
+        pgstib    /* occupational position                              */ ///
+        pgemplst  /* employment status                                  */ ///
+        pglfs     /* labour force status                                */ ///
+        pgbilzeit /* amount of education or training in years (see tab) */ ///
+        pgisced97 /* ISCED-1997 classification of education             */ ///
+        pgpsbil   /* school-leaving degree level                        */ ///
         pgpsbila  /* school-leaving degree level outside DE             */ ///
         pgpsbilo  /* school-leaving degree level GDR                    */ ///
         pgpbbila  /* vocational degree outside DE                       */ ///
-        pgpbbil01 /* type of vocational degree (if any)                 */ ///   
-        pgpbbil02 /* type of college degree (if any)                    */ ///   
-        pgpbbil03 /* type of non vocational degree                      */ ///   
-        pgfield   /* field of tertiary degree (if any)                  */ ///      
+        pgpbbil01 /* type of vocational degree (if any)                 */ ///
+        pgpbbil02 /* type of college degree (if any)                    */ ///
+        pgpbbil03 /* type of non vocational degree                      */ ///
+        pgfield   /* field of tertiary degree (if any)                  */ ///
         pgdegree  /* type of tertiary degree (if any)                   */ ///
         pgtraina  /* apprenticeship - two-digit occupation (KLDB92)     */ ///
         pgtrainb  /* vocational school - two-digit occupation (KLDB92)  */ ///
         pgtrainc  /* higher voc. school - two-digit occupation (KLDB92) */ ///
-        pgtraind  /* civ. servant train - two-digit occupation (KLDB92) */ ///       
+        pgtraind  /* civ. servant train - two-digit occupation (KLDB92) */ ///
         pgisco?8  /* ISCO-88(08) Industry Classification                */ ///
-        pgegp88   /* Last Reached EGP Value (Erikson et al. 1979, 1983) */ ///     
+        pgegp88   /* Last Reached EGP Value (Erikson et al. 1979, 1983) */ ///
+        pgnace    /* industry occupation (NACE 1.1)                     */ ///
+        pglabnet  /* current monthly net labour income in euro          */ ///
     ) keep(master match) nogen
 
 * married and not separated, or registered same-sex relationship
@@ -122,20 +125,14 @@ g retired = (pgstib == 13) ///
 * education in years is available only for those who studied in Germany (?)
 g yeduc = pgbilzeit if !inlist(pgbilzeit, -1, -2) & !missing(pgbilzeit)
 
-* College Degree is listed as Hauptschulabschluss or Realschulabschluss
-*   but sometimes the information is messy so I am retrieving from the
-*   School-Leaving College Degree Type and the degree abroad
-g college = ( ///
-    inlist(pgpsbil, 1, 2) | ///
-    (pgpsbil == -1 | inlist(pgpsbila, 2, 4, 5)) & ///
-    (pgpbbil02 > 0 & !missing(pgpbbil02)) ///
-    ) if !missing(pgpsbil)
-* Abitur is High School Degree at the end of Gymnasium
-g hsdegree = (college == 1 | pgpsbil == 4) if !missing(pgpsbil)
-* vocational education is given by technical education home or abroad
-*   and if classified vocational education abroad in pgpbbila
-g voceduc = (pgpsbil == 3 | pgpsbila == 3 | ///
-    inlist(pgpbbila, 1, 2, 3, 6, 7, 8, 11, 12, 13, 16, 18)) if !missing(pgpsbil)
+* college degree information for Germany is messy, so I am using the
+*   clear ISCED97 classification provided in the dataset
+g college = (inlist(pgisced97, 5, 6)) if !missing(pgisced97)
+* abitur is high school degree at the end of gymnasium
+g hsdegree = (college == 1 | pgisced97 == 4) if !missing(pgisced97)
+* vocational education for Germany is also messy, so I am using ISCED97
+*   including middle vocational and higher vocational education
+g voceduc = (inlist(pgisced97, 3, 4)) if !missing(pgisced97)
 * business and economics related education or training, we use the different
 *   categories in apprenticeship, vocational training and civil service training
 *   together with the type of tertiary education
@@ -147,7 +144,7 @@ foreach i in `stubvar' {
         inrange(pgtrain`i', 7711, 7739) | inrange(pgtrain`i', 8810, 8819) | ///
         inlist(pgtrain`i', 7501, 7502, 7503, 7511, 7512, ///
             7513, 7572, 7854, 7855, 7856) ///
-        ) if !missing(pgtrain`i') & !inlist(pgtrain`i', -1, -3)
+    ) if !missing(pgtrain`i') & !inlist(pgtrain`i', -1, -3)
 }
 
 g aux0 = inlist(pgfield, 29, 30, 31) ///
@@ -164,9 +161,13 @@ g egp = pgegp88 if !missing(pgegp88) & pgegp88 > 0
 g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
     4122, 4214, 4215) | inrange(pgisco88, 3410, 3413) | inrange(pgisco88, ///
     3419, 3421) | inlist(pgisco08, 1211, 1346, 2631, 3311, ///
-    3312, 3334, 4213, 4214, 4312))
+    3312, 3334, 4213, 4214, 4312) | inlist(pgnace, 65, 66, 67, 70))
 
-* TODO: we can add variables at individual level here later
+* monthly net labour income, mostly not imputed
+g pnetinc = pglabnet if pglabnet >= 0
+
+* keep just the generated variables
+drop pg* sex gebmonat piyear
 
 ********************************************************************************
 * Step 4: Identification of the head of household as defined in the GSOEP,     *
@@ -175,7 +176,24 @@ g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
 *   values at household level when relevant and some variables as such.        *
 ********************************************************************************
 
-* cosa facciamo con hid = -2? Dobbiamo ammazzarli?
+* the head of the household is defined as the person who knows best about
+*   the general conditions under which the household acts and is supposed
+*   to answer this questionnaire in each given year
+merge 1:1 pid syear using "${SOEP_PATH}/pbrutto.dta", ///
+    keepus(stell_h) keep(master match) nogen
+
+* we do have a problem here that also comes from the previous step: missing
+*   individuals in pgen are also missing in pbrutto, we are going to drop them
+*   since we do not have useful information to exploit
+drop if missing(stell_h)
+
+* exclude if household head is not second-generation
+g flag_h = (stell_h == 0 & !missing(ancestry))
+bys hid syear : egen aux = total(flag_h)
+keep if aux == 1
+drop flag_h aux
+
+* TODO: given monthly income, identify who has an economic role in the family
 
 * number of household members
 bys hid syear: egen hsize = count(pid)
@@ -257,8 +275,3 @@ rename (ancestry migback pid) (sancestry smigback spid)
 keep hpid syear ?ancestry ?native ?secgen gebjahr age smigback
 
 * retrieve demographics for the head of household
-
-
-
-
-

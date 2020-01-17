@@ -27,10 +27,10 @@ grstyle set plain, grid horizontal compact
 grstyle set color lean
 
 * general symbol set as lean
-grstyle set symbol lean
+grstyle set symbol
 
 * general line pattern set as lean
-grstyle set lpattern lean
+grstyle set lpattern
 
 * axis options
 grstyle set size small: tick_label
@@ -47,13 +47,14 @@ grstyle set size vsmall: p#markfill
 grstyle set size vsmall: p#markline
 
 * histogram options
-*grstyle set color, opacity(80): histogram
-*grstyle set color, opacity(50): histogram_line
+grstyle set color gs4, opacity(80): histogram
+grstyle set color gs4, opacity(50): histogram_line
 grstyle set size vsmall: histogram
+grstyle set size thin: histogram_line
 
 * graph bar opsions
-grstyle set color 538, opacity(80): p#bar
-grstyle set color 538, opacity(50): p#barline
+grstyle set color gs4, opacity(80): p#bar
+grstyle set color gs4, opacity(50): p#barline
 grstyle set size small: p#bar
 
 * transparent CIs
