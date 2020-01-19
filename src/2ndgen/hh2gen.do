@@ -98,7 +98,6 @@ merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
         pgisco?8  /* ISCO-88(08) Industry Classification                */ ///
         pgegp88   /* Last Reached EGP Value (Erikson et al. 1979, 1983) */ ///
         pgnace    /* industry occupation (NACE 1.1)                     */ ///
-        pglabnet  /* current monthly net labour income in euro          */ ///
     ) keep(master match) nogen
 
 * married and not separated, or registered same-sex relationship
@@ -163,17 +162,13 @@ g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
     3419, 3421) | inlist(pgisco08, 1211, 1346, 2631, 3311, ///
     3312, 3334, 4213, 4214, 4312) | inlist(pgnace, 65, 66, 67, 70))
 
-* monthly net labour income, mostly not imputed
-g pnetinc = pglabnet if pglabnet >= 0
-
 * keep just the generated variables
 drop pg* sex gebmonat piyear
 
 ********************************************************************************
 * Step 4: Identification of the head of household as defined in the GSOEP,     *
 *   household information from the individual level for relevant members in    *
-*   the households (excluding kids, still in education or retired), average    *
-*   values at household level when relevant and some variables as such.        *
+*   the households (excluding kids, still in education or retired).            *
 ********************************************************************************
 
 * the head of the household is defined as the person who knows best about
@@ -193,20 +188,71 @@ bys hid syear : egen aux = total(flag_h)
 keep if aux == 1
 drop flag_h aux
 
-* TODO: given monthly income, identify who has an economic role in the family
+* exclude if household head is underage, still in education or retired
+g flag_h = (stell_h == 0 & (ineduc == 1 | retired == 1))
+bys hid syear : egen aux = total(flag_h)
+keep if aux == 0
+drop flag_h aux
 
-* number of household members
-bys hid syear: egen hsize = count(pid)
+* calculate the number of household members
+bys hid syear : egen hsize = count(pid)
+* calculate the number of underage in the household
+g aux = (age < 18)
+bys hid syear : egen nchild = total(aux)
+drop aux
 
-* number of kids in the household
+preserve
+* temporary save the variables we want to keep from the partner
+keep pid syear age ancestry ?native ?secgen female employed selfemp ///
+    yeduc college hsdegree etecon finjob
+rename (age ancestry ?native ?secgen female employed selfemp yeduc college ///
+    hsdegree etecon finjob) (age_s ancestry_s ?native_s ?secgen_s female_s ///
+    employed_s selfemp_s yeduc_s college_s hsdegree_s etecon_s finjob_s)
+tempfile partners
+save `partners'
+restore
 
-* drop if not head of household, head younger than 18
+* keep only the head of household
+keep if stell_h == 0
+* rename partner id for the merge
+rename (pid parid) (pid_h pid)
+* replace identifier when there is no partner
+replace pid = . if pid == -2
+drop stell_h
+
+preserve
+* save households with no partners
+keep if missing(pid)
+rename  (pid_h pid) (pid parid)
+tempfile nopartners
+save `nopartners'
+restore
+
+* we keep only heads of household with the partner
+drop if missing(pid)
+
+* retrieve country of origin and migration background of the partner
+merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
+    keepus(corigin migback) keep(match) nogen
+* include all the demographics for the spouse
+merge 1:1 pid syear using `partners', keep(match) nogen
+
+* integrate ancestry when the spouse is not a second-generation
+replace ancestry_s = corigin if migback != 3
+rename (migback pid_h pid) (migback_s pid parid)
+
+* reintegrate households where there is not a partner
+append using `nopartners'
+
+keep hid pid syear cid gebjahr parid ancestry* ?native* ?secgen* age* ///
+    female* married* employed* selfemp* civserv* ineduc* retired* yeduc* ///
+    hsdegree* voceduc* etecon* egp* finjob* hsize nchild migback_s
 
 ********************************************************************************
 * Step 5: Information about head of household and partner's parents.           *
 ********************************************************************************
 
-
+* we need to use bioparen here
 
 
 ********************************************************************************

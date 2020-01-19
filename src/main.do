@@ -63,9 +63,9 @@ if "`c(os)'" == "Windows" {
 }
 
 else if "`c(os)'" == "MacOSX" {
-	* define project parent folder location
-	gl HOME_DIR = "/Users/`c(username)'/Documents/Projects"
-    '
+    * define project parent folder location
+    gl HOME_DIR = "/Users/`c(username)'/Documents/Projects"
+
     * define cloud folder location
     gl MEGA_PATH = "/Users/`c(username)'/MEGA/${MEGA_DIR}"
 
