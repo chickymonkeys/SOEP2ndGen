@@ -204,10 +204,11 @@ drop aux
 preserve
 * temporary save the variables we want to keep from the partner
 keep pid syear age ancestry ?native ?secgen female employed selfemp ///
-    yeduc college hsdegree etecon finjob
-rename (age ancestry ?native ?secgen female employed selfemp yeduc college ///
-    hsdegree etecon finjob) (age_s ancestry_s ?native_s ?secgen_s female_s ///
-    employed_s selfemp_s yeduc_s college_s hsdegree_s etecon_s finjob_s)
+    yeduc college hsdegree etecon finjob egp
+rename (age ancestry ?native ?secgen female employed selfemp yeduc ///
+    college hsdegree etecon finjob egp) (age_s ancestry_s ?native_s /// 
+    ?secgen_s female_s employed_s selfemp_s yeduc_s college_s /// 
+    hsdegree_s etecon_s finjob_s egp_s)
 tempfile partners
 save `partners'
 restore
