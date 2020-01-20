@@ -69,11 +69,10 @@ replace age = piyear - gebjahr     if missing(pgmonth) | missing(gebmonat)
 g female = (sex == 2) if !missing(sex) | !inlist(sex, -1, -3)
 
 ********************************************************************************
-* Step 3: some demographics. Marital Status, Occupation, Education.            *
+* Step 3: some demographics. Marital Status, Occupation, Education, Religion.  *
 ********************************************************************************
 
 * retrieve some information about employment and education from the pgen
-* TODO: why do we lose 3000 observations? not in pbr_exit, abroad?
 merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
     keepus(                                                                ///
         pgfamstd  /* marital status in survey year                      */ ///
@@ -165,6 +164,34 @@ g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
 * keep just the generated variables
 drop pg* sex gebmonat piyear
 
+* acquire religion or church for the single individuals (harmonised) from pl
+merge 1:1 pid syear using "${SOEP_PATH}/pl.dta", ///
+   keepus(plh0258_h) keep(master match) nogen
+* religion is available only for some waves, assume it is religion background
+gen aux1 = plh0258_h if plh0258_h > 0 | plh0258_h == 11
+bys pid : egen maxyear = max(syear) if !missing(aux1)
+g aux2 = aux1 if syear == maxyear
+bys pid : egen aux3 = mode(aux1)
+bys pid : egen aux4 = mode(aux2)
+replace aux3 = aux4 if missing(aux3)
+
+g religion = 1 if aux3 == 1
+replace religion = 2 if aux3 == 2
+replace religion = 3 if aux3 == 7
+replace religion = 4 if aux3 == 3
+replace religion = 5 if inlist(aux3, 4, 8, 9, 10)
+replace religion = 6 if aux3 == 5
+replace religion = 7 if aux3 == 6
+
+label language EN
+label define religion_EN 1 "Catholic" 2 "Protestant" 3 "Orthodox" ///
+  4 "Christian Others" 5 "Muslim" 6 "Other Religion" 7 "No Denomination"
+label values religion religion_EN
+label variable religion "Religious Group"
+label language DE
+
+drop aux* plh0258_h
+
 ********************************************************************************
 * Step 4: Identification of the head of household as defined in the GSOEP,     *
 *   household information from the individual level for relevant members in    *
@@ -200,6 +227,123 @@ bys hid syear : egen hsize = count(pid)
 g aux = (age < 18)
 bys hid syear : egen nchild = total(aux)
 drop aux
+
+* parents demographics trial
+* start to retrieve information about the parents' current household
+preserve
+local stubvar = "f m"
+foreach i in `stubvar' {
+    * open parents' biographical dataset
+    u "${SOEP_PATH}/bioparen.dta", clear
+
+    * keep only if it is possible to link the parent
+    keep persnr `i'nr
+    keep if `i'nr > 0
+    rename persnr pid
+
+    * keep just individuals in the relevant households
+    merge 1:m pid using `temp', keep(match) nogen
+    rename (pid `i'nr) (kchild pid)
+    keep kchild pid syear
+    duplicates drop pid, force
+
+    * retrieve current household identifier for the parent
+    merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
+        keepus(hid syear) keep(match) nogen
+    drop pid syear
+    drop if hid < 0
+    duplicates drop hid, force
+    
+    * calculate parent's current household size
+    merge 1:m hid using "${SOEP_PATH}/ppathl.dta", ///
+        keepus(pid syear) keep(match) nogen
+    bys hid syear : egen `i'hsize = count(pid)
+    collapse (mean) `i'hsize kchild, by(hid syear) 
+
+    * retrieve household weights
+    merge 1:1 hid syear using "${SOEP_PATH}/hpathl.dta", ///
+        keepus(hhrf) keep(master match) nogen
+    * retrieve imputations of parent's current household net income
+    merge 1:1 hid syear using "${SOEP_PATH}/hgen.dta", ///
+        keepus(hghinc hgi?hinc) keep(master match) nogen
+    * retrieve imputations of parent's current household net wealth
+    merge 1:1 hid syear using "${SOEP_PATH}/hwealth.dta", ///
+        keepus() keep(master match) nogen
+    * fix imputation names
+    rename hgi?hinc hgihinc?
+    rename (w011h?) (w011h1 w011h2 w011h3 w011h4 w011h5)
+
+    * reshape for the five imputations
+    reshape long hgihinc w011h, i(hid syear) j(imp)
+    * part of the net income is imputed, the other part is not
+    replace hgihinc = . if hgihinc < 0
+    * apply household weights and average for imputations
+    collapse (mean) `i'hsize kchild hghinc hgihinc w011h ///
+        [pw=hhrf], by(hid syear imp)
+    collapse `i'hsize kchild hghinc hgihinc w011h, by(hid syear)
+
+    g `i'hnetinc = hgihinc
+    replace `i'hnetinc = hghinc if missing(`i'hnetinc) 
+    g `i'hnetwel = w011h
+
+    rename (hid kchild)(`i'hid pid)
+    keep pid syear `i'hsize `i'hnetinc `i'hnetwel `i'hid
+    tempfile `i'temp
+    save ``i'temp'
+}
+
+restore
+
+* merge everything together
+merge 1:1 pid syear using `ftemp', keep(master match) nogen
+merge 1:1 pid syear using `mtemp', keep(master match) nogen
+* generate indicator if parents still belong to the same household
+g psamehh = (fhid == mhid) if !missing(fhid) | !missing(mhid)
+drop ?hid
+
+
+*********************
+
+
+u "${SOEP_PATH}/bioparen.dta", clear
+keep persnr bioyear ?birth ?nr ?ydeath ?reli ?sedu living? ?currloc ?egp ///
+    sibl numbs numb ?fight
+
+* count siblings in the parental information
+g auxs = nums if nums >= 0
+replace auxs = 0 if sibl == 0
+g auxb = numb if numb >= 0
+replace auxb = 0 if sibl == 0
+egen nsibs = rowtotal(auxs auxb), missing
+drop aux*
+
+drop pid
+rename bioyear syear
+local stubvar = "f m"
+foreach i in `stubvar' {
+    rename `i'nr pid
+    preserve
+    replace pid = . if pid < 0
+    drop if missing(pid)
+    tempfile `i'nopid
+    save ``i'nopid'
+    restore
+    merge 1:m pid syear using "${SOEP_PATH}/pgen.dta", ///
+        keepus(pglabnet) keep(master match) nogen
+    tempfile `i'yespid
+    save `i'yespid
+}
+
+
+
+
+
+
+
+
+
+
+
 
 preserve
 * temporary save the variables we want to keep from the partner

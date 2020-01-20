@@ -196,8 +196,8 @@ foreach var of varlist nat cborn {
 
 * save the dataset to open bioparen
 keep pid syear ancestry*
-tempfile prebio
-save `prebio'
+tempfile temp
+save `temp'
 
 ********************************************************************************
 * Step 8: Cross-Generational Linking with the bioparen datasets in order to    *
@@ -212,7 +212,7 @@ keep persnr bioyear ?nr ?nat ?origin
 rename (persnr bioyear) (pid syear)
 
 * merge using the previously assembled dataset
-merge 1:m pid syear using `prebio', keep(using match) nogen
+merge 1:m pid syear using `temp', keep(using match) nogen
 
 local stubs = "nr nat origin"
 local gender = "f m"
@@ -244,8 +244,6 @@ replace ancestry8 = forigin if missing(ancestry8) & ///
 * we should try to correct for Eastern Europe (code 222) afterwards
 
 keep pid syear ?nr ancestry? ?native
-tempfile postbio
-save `postbio'
 
 foreach g in `gender' {
     preserve
@@ -361,7 +359,7 @@ foreach g in `gender' {
     tempfile `g'postbio
     save ``g'postbio'
     restore
-
+    
 }
 
 * merging the linking information and sort
