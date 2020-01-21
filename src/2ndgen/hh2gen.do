@@ -190,7 +190,7 @@ label values religion religion_EN
 label variable religion "Religious Group"
 label language DE
 
-drop aux* plh0258_h
+drop aux* maxyear plh0258_h
 
 ********************************************************************************
 * Step 4: Identification of the head of household as defined in the GSOEP,     *
@@ -228,97 +228,20 @@ g aux = (age < 18)
 bys hid syear : egen nchild = total(aux)
 drop aux
 
+********************************************************************************
+* Step 5: Information of current parents' household, splitting between mother  *
+*   and father for each individual, in terms of size of current parent's       *
+*   household, current net labour income and current net wealth (available     *
+*   inputed only for waves 2002, 2007, and 2012).                              *
+*   Note: it is possible to gain those information just for parents that are   *
+*   still in the survey, where for net income and wealth of dead households we *
+*   consider the average over the available years.                             *
+********************************************************************************
+
+* we save the current dataset to avoid the memory leak that we have to solve
+*   in Linux when running the whole script coming to pl
 save "${DATA_PATH}/temp.dta", replace
-
-
-* parents demographics trial
-* start to retrieve information about the parents' current household
-
-* temporary to avoid the mess in Linux with pl
 use "${DATA_PATH}/temp.dta", clear
-
-* work only on fathers
-preserve
-keep pid
-duplicates drop pid, force
-tempfile temp
-save `temp'
-* open parents' biographical dataset
-u "${SOEP_PATH}/bioparen.dta", clear
-
-* keep only if it is possible to link the parent
-keep persnr fnr
-keep if fnr > 0
-rename persnr pid
-merge 1:1 pid using `temp', keep(match) nogen
-keep fnr
-rename fnr pid
-* multiple pid because you have multiple children so?
-* work only with fathers id
-duplicates drop pid, force
-* save household identifier for the parent
-merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(hid syear) keep(match) nogen
-drop syear
-drop if hid < 0
-duplicates drop hid, force
-rename pid fnr
-* calculate parent's current household size
-merge 1:m hid using "${SOEP_PATH}/ppathl.dta", keepus(pid syear) keep(match) nogen
-bys hid syear : egen fhsize = count(pid)
-collapse (mean) fnr fhsize, by(hid syear)
-
-* retrieve household weights
-merge 1:1 hid syear using "${SOEP_PATH}/hpathl.dta",  keepus(hhrf) keep(master match) nogen
-* retrieve imputations of parent's current household net income
-merge 1:1 hid syear using "${SOEP_PATH}/hgen.dta", keepus(hghinc hgi?hinc) keep(master match) nogen
-* retrieve imputations of parent's current household net wealth
-merge 1:1 hid syear using "${SOEP_PATH}/hwealth.dta", keepus(w011h?) keep(master match) nogen
-
-rename hgi?hinc hgihinc?
-rename (w011h?) (w011h1 w011h2 w011h3 w011h4 w011h5)
-
-* reshape for the five imputations
-reshape long hgihinc w011h, i(hid syear) j(imp)
-
-* part of the net income is imputed, the other part is not
-replace hgihinc = . if hgihinc < 0
-replace hghinc =  . if hghinc  < 0
-
-* apply household weights and average for imputations
-collapse (mean) fnr fhsize hghinc hgihinc w011h [pw=hhrf], by(hid syear imp)
-collapse fnr fhsize hghinc hgihinc w011h, by(hid syear)
-
-g fhnetinc = hgihinc
-replace fhnetinc = hghinc if missing(fhnetinc)
-g fhnetwth = w011h
-
-* averaging household net income and net wealth
-bys hid : egen fhnetincavg = mean(fhnetinc)
-bys hid : egen fhnetwthavg = mean(fhnetwth)
-
-rename hid fhid
-keep fhid syear fnr fhsize fhnetinc* fhnetwth*
-tempfile ftemp
-save `ftemp'
-restore
-
-rename pid persnr
-merge m:1 persnr using "${SOEP_PATH}/bioparen.dta", keepus(fnr) keep(master match) nogen
-preserve
-drop if fnr < 0 | missing(fnr)
-tempfile fnopid
-save `fnopid'
-restore
-keep if fnr > 0 & !missing(fnr)
-merge m:m fnr syear using `ftemp', keep(master match) nogen
-
-
-
-
-
-
-
-
 
 preserve
 
@@ -337,22 +260,25 @@ foreach i in `stubvar' {
     keep if `i'nr > 0
     rename persnr pid
 
-    * keep just individuals in the relevant households
+    * keep parent identifier just for  the relevant households
     merge 1:1 pid using `temp', keep(match) nogen
-    rename (pid `i'nr) (kchild pid)
+    keep `i'nr
+    rename `i'nr pid
+    duplicates drop pid, force
 
     * retrieve current household identifier for the parent
     merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
         keepus(hid syear) keep(match) nogen
-    drop pid syear
+    drop syear
     drop if hid < 0
     duplicates drop hid, force
-    
+    rename pid `i'nr
+
     * calculate parent's current household size
     merge 1:m hid using "${SOEP_PATH}/ppathl.dta", ///
         keepus(pid syear) keep(match) nogen
     bys hid syear : egen `i'hsize = count(pid)
-    collapse (mean) `i'hsize kchild, by(hid syear) 
+    collapse (mean) `i'hsize `i'nr, by(hid syear) 
 
     * retrieve household weights
     merge 1:1 hid syear using "${SOEP_PATH}/hpathl.dta", ///
@@ -370,36 +296,60 @@ foreach i in `stubvar' {
     * reshape for the five imputations
     reshape long hgihinc w011h, i(hid syear) j(imp)
     * part of the net income is imputed, the other part is not
+    *   and correct for flagged implausible values of net income 
     replace hgihinc = . if hgihinc < 0
+    replace hghinc  = . if hghinc  < 0
     * apply household weights and average for imputations
-    collapse (mean) `i'hsize kchild hghinc hgihinc w011h ///
+    collapse (mean) `i'nr `i'hsize hghinc hgihinc w011h ///
         [pw=hhrf], by(hid syear imp)
-    collapse `i'hsize kchild hghinc hgihinc w011h, by(hid syear)
+    collapse `i'nr `i'hsize hghinc hgihinc w011h, by(hid syear)
 
     g `i'hnetinc = hgihinc
     replace `i'hnetinc = hghinc if missing(`i'hnetinc) 
     g `i'hnetwth = w011h
 
-    rename (hid kchild) (`i'hid pid)
-    keep pid syear `i'hsize `i'hnetinc `i'hnetwth `i'hid
+    * averaging household net income and net wealth
+    bys hid : egen `i'hnetincavg = mean(`i'hnetinc)
+    bys hid : egen `i'hnetwthavg = mean(`i'hnetwth)
+
+    rename hid `i'hid
+    keep `i'nr syear `i'hsize `i'hnetinc* `i'hnetwth* `i'hid
     tempfile `i'temp
     save ``i'temp'
 }
 
 restore
 
-* merge everything together
-merge 1:1 pid syear using `ftemp', keep(master match) nogen
-merge 1:1 pid syear using `mtemp', keep(master match) nogen
-* generate indicator if parents still belong to the same household
-g psamehh = (fhid == mhid) if !missing(fhid) | !missing(mhid)
-drop ?hid
+rename pid persnr
+* retrieve parents' identifiers from biological information
+merge m:1 persnr using "${SOEP_PATH}/bioparen.dta", ///
+    keepus(fnr mnr) keep(master match) nogen
 
-save "${DATA_PATH}/temp.dta", replace
+* for each parent, merge the household information
+local stubvar = "f m"
+foreach i in `stubvar' {
+    preserve
+    drop if `i'nr < 0 | missing(`i'nr)
+    tempfile `i'nopid
+    save ``i'nopid'
+    restore
+    * it is many-to-many because one parent can have multiple children in the
+    *   survey and his household exists years before the children's household
+    merge m:m `i'nr syear using ``i'temp', keep(master match) nogen
+    * re-attach individuals without parent in the survey
+    append using ``i'nopid' 
+} 
 
+rename persnr pid
 
-*********************
+* create identifier if there are both parents and are in the same household
+g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 
+********************************************************************************
+* Step 6: Retrieve the remaining information about parents from the biological *
+*   dataset, where information about parents is generated from parents within  *
+*   the survey and self-reported information by the interviewed individuals.   *
+********************************************************************************
 
 u "${SOEP_PATH}/bioparen.dta", clear
 keep persnr bioyear ?birth ?nr ?ydeath ?reli ?sedu living? ?currloc ?egp ///
@@ -430,16 +380,14 @@ foreach i in `stubvar' {
     save `i'yespid
 }
 
+* parents time of immigration, length of stay in Germany and some demographics 
+*   that I can get just for the parents still in the 
 
-
-
-
-
-
-
-
-
-
+********************************************************************************
+* Step 7: Reverse all the information in one household row in order to merge   *
+*   the current household informaiton given the second-generation head of      *
+*   household from the aggregated datasets.                                    *
+********************************************************************************
 
 preserve
 * temporary save the variables we want to keep from the partner
@@ -488,77 +436,3 @@ append using `nopartners'
 keep hid pid syear cid gebjahr parid ancestry* ?native* ?secgen* age* ///
     female* married* employed* selfemp* civserv* ineduc* retired* yeduc* ///
     hsdegree* voceduc* etecon* egp* finjob* hsize nchild migback_s
-
-********************************************************************************
-* Step 5: Information about head of household and partner's parents.           *
-********************************************************************************
-
-* we need to use bioparen here
-
-
-********************************************************************************
-* Step 6: Household level variables.                                           *
-********************************************************************************
-
-
-
-
-
-* drop if still in education?
-* drop if pgstib == 11
-
-* number of adults in the household
-* number of children in the household (count after indicator variable)
-
-* prima finisci a tirare fuori demographics dell'head of household
-* poi fai quelle della sposa e quelle di eventuali figli nel nucleo aventi un
-* ruolo negli asset della famiglia
-* non sappiamo ancora chi è head of household, tiriamo su tutti
-* droppiamo quelli che sono ancora in education eventualmente?
-
-* poi fai bioparen length of stay 
-
-* poi household level in riga con assets e liabilities
-
-* poi household level con le cose messe in riga assets e liabilities
-* I don't really care about marital status as long as there is a partner
-* I care more about how many figli a carico
-
-* trovare un codice per le demo di husband, spouse e figli eventuali 
-
-* parents time of immigration, length of stay in Germany
-
-******
-
-
-* retrieve relationship with the head of household from pbrutto dataset
-* the head of the household is defined as the person who knows best about
-*   the general conditions under which the household acts and is supposed
-*   to answer this questionnaire in each given year
-merge 1:1 pid syear using "${SOEP_PATH}/pbrutto.dta", ///
-    keepus(stell_h) keep(master match) nogen
-keep if stell_h == 0 
-rename (pid parid ancestry) (hpid pid hancestry)
-replace pid = . if pid == -2
-drop stell_h
-
-preserve
-keep if missing(pid)
-tempfile subset
-save `subset'
-restore
-
-drop if missing(pid)
-
-merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
-    keepus(corigin migback) keep(master match) nogen
-
-merge 1:1 pid syear using "${DATA_PATH}/2ndgenindv34soep.dta", ///
-    keepus(ancestry) keep(master match) nogen
-
-replace ancestry = corigin if migback != 3
-rename (ancestry migback pid) (sancestry smigback spid)
-
-keep hpid syear ?ancestry ?native ?secgen gebjahr age smigback
-
-* retrieve demographics for the head of household

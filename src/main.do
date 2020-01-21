@@ -26,7 +26,7 @@ set more off
 set matsize 11000
 
 * for Stata in Linux
-set max_memory 4g
+set max_memory 6g
 
 ********************************************************************************
 * Utility Flags Definition                                                     *
