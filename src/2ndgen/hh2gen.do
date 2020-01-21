@@ -229,8 +229,31 @@ bys hid syear : egen nchild = total(aux)
 drop aux
 
 save "${DATA_PATH}/temp.dta", replace
+
+
 * parents demographics trial
 * start to retrieve information about the parents' current household
+
+* temporary to avoid the mess in Linux with pl
+use "${DATA_PATH}/temp.dta", clear
+
+* work only on fathers
+preserve
+keep pid
+duplicates drop pid, force
+tempfile temp
+save `temp'
+* open parents' biographical dataset
+u "${SOEP_PATH}/bioparen.dta", clear
+
+* keep only if it is possible to link the parent
+keep persnr fnr
+keep if fnr > 0
+rename persnr pid
+merge 1:1 pid using `temp', keep(match) nogen
+rename (pid fnr) (kchild pid)
+* multiple pid because you have multiple children
+
 preserve
 
 keep pid
