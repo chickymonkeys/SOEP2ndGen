@@ -251,8 +251,74 @@ keep persnr fnr
 keep if fnr > 0
 rename persnr pid
 merge 1:1 pid using `temp', keep(match) nogen
-rename (pid fnr) (kchild pid)
-* multiple pid because you have multiple children
+keep fnr
+rename fnr pid
+* multiple pid because you have multiple children so?
+* work only with fathers id
+duplicates drop pid, force
+* save household identifier for the parent
+merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(hid syear) keep(match) nogen
+drop syear
+drop if hid < 0
+duplicates drop hid, force
+rename pid fnr
+* calculate parent's current household size
+merge 1:m hid using "${SOEP_PATH}/ppathl.dta", keepus(pid syear) keep(match) nogen
+bys hid syear : egen fhsize = count(pid)
+collapse (mean) fnr fhsize, by(hid syear)
+
+* retrieve household weights
+merge 1:1 hid syear using "${SOEP_PATH}/hpathl.dta",  keepus(hhrf) keep(master match) nogen
+* retrieve imputations of parent's current household net income
+merge 1:1 hid syear using "${SOEP_PATH}/hgen.dta", keepus(hghinc hgi?hinc) keep(master match) nogen
+* retrieve imputations of parent's current household net wealth
+merge 1:1 hid syear using "${SOEP_PATH}/hwealth.dta", keepus(w011h?) keep(master match) nogen
+
+rename hgi?hinc hgihinc?
+rename (w011h?) (w011h1 w011h2 w011h3 w011h4 w011h5)
+
+* reshape for the five imputations
+reshape long hgihinc w011h, i(hid syear) j(imp)
+
+* part of the net income is imputed, the other part is not
+replace hgihinc = . if hgihinc < 0
+replace hghinc =  . if hghinc  < 0
+
+* apply household weights and average for imputations
+collapse (mean) fnr fhsize hghinc hgihinc w011h [pw=hhrf], by(hid syear imp)
+collapse fnr fhsize hghinc hgihinc w011h, by(hid syear)
+
+g fhnetinc = hgihinc
+replace fhnetinc = hghinc if missing(fhnetinc)
+g fhnetwth = w011h
+
+* averaging household net income and net wealth
+bys hid : egen fhnetincavg = mean(fhnetinc)
+bys hid : egen fhnetwthavg = mean(fhnetwth)
+
+rename hid fhid
+keep fhid syear fnr fhsize fhnetinc* fhnetwth*
+tempfile ftemp
+save `ftemp'
+restore
+
+rename pid persnr
+merge m:1 persnr using "${SOEP_PATH}/bioparen.dta", keepus(fnr) keep(master match) nogen
+preserve
+drop if fnr < 0 | missing(fnr)
+tempfile fnopid
+save `fnopid'
+restore
+keep if fnr > 0 & !missing(fnr)
+merge m:m fnr syear using `ftemp', keep(master match) nogen
+
+
+
+
+
+
+
+
 
 preserve
 
@@ -296,7 +362,7 @@ foreach i in `stubvar' {
         keepus(hghinc hgi?hinc) keep(master match) nogen
     * retrieve imputations of parent's current household net wealth
     merge 1:1 hid syear using "${SOEP_PATH}/hwealth.dta", ///
-        keepus() keep(master match) nogen
+        keepus(w011h?) keep(master match) nogen
     * fix imputation names
     rename hgi?hinc hgihinc?
     rename (w011h?) (w011h1 w011h2 w011h3 w011h4 w011h5)
@@ -312,10 +378,10 @@ foreach i in `stubvar' {
 
     g `i'hnetinc = hgihinc
     replace `i'hnetinc = hghinc if missing(`i'hnetinc) 
-    g `i'hnetwel = w011h
+    g `i'hnetwth = w011h
 
     rename (hid kchild) (`i'hid pid)
-    keep pid syear `i'hsize `i'hnetinc `i'hnetwel `i'hid
+    keep pid syear `i'hsize `i'hnetinc `i'hnetwth `i'hid
     tempfile `i'temp
     save ``i'temp'
 }
