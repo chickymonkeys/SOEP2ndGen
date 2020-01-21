@@ -54,7 +54,7 @@ if "`c(os)'" == "Windows" {
         * just in desperate low connection cases
         gl V_DRIVE = "E:/Data"
     }
-
+.\s13903
     else {
         * define virtual drive pathname (depending on network)
         gl V_DRIVE = "M:/Data"
