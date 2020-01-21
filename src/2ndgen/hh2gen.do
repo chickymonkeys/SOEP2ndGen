@@ -25,7 +25,7 @@ capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 ********************************************************************************
 
 * use the second-generation panel
-u "${DATA_PATH}/2ndgenindv34soep.dta", replace
+u "${DATA_PATH}/2ndgenindv34soep.dta", clear
 merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
     keepus(hid) keep(match) nogen
 duplicates drop hid, force
@@ -152,7 +152,7 @@ egen etecon = rowmax(aux0 auxa auxb auxc auxd)
 drop aux?
 
 * job prestige classification : the lower the better (?)
-*   we use EGP Scale (Erikson et al. 1983) because it is the most complete info)
+*   we use EGP Scale (Erikson et al. 1983) because it is the most complete info
 g egp = pgegp88 if !missing(pgegp88) & pgegp88 > 0
 
 * finance-related job based on ISCO codes
@@ -228,9 +228,16 @@ g aux = (age < 18)
 bys hid syear : egen nchild = total(aux)
 drop aux
 
+save "${DATA_PATH}/temp.dta", replace
 * parents demographics trial
 * start to retrieve information about the parents' current household
 preserve
+
+keep pid
+duplicates drop pid, force
+tempfile temp
+save `temp'
+
 local stubvar = "f m"
 foreach i in `stubvar' {
     * open parents' biographical dataset
@@ -242,10 +249,8 @@ foreach i in `stubvar' {
     rename persnr pid
 
     * keep just individuals in the relevant households
-    merge 1:m pid using `temp', keep(match) nogen
+    merge 1:1 pid using `temp', keep(match) nogen
     rename (pid `i'nr) (kchild pid)
-    keep kchild pid syear
-    duplicates drop pid, force
 
     * retrieve current household identifier for the parent
     merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
@@ -286,7 +291,7 @@ foreach i in `stubvar' {
     replace `i'hnetinc = hghinc if missing(`i'hnetinc) 
     g `i'hnetwel = w011h
 
-    rename (hid kchild)(`i'hid pid)
+    rename (hid kchild) (`i'hid pid)
     keep pid syear `i'hsize `i'hnetinc `i'hnetwel `i'hid
     tempfile `i'temp
     save ``i'temp'
@@ -300,6 +305,8 @@ merge 1:1 pid syear using `mtemp', keep(master match) nogen
 * generate indicator if parents still belong to the same household
 g psamehh = (fhid == mhid) if !missing(fhid) | !missing(mhid)
 drop ?hid
+
+save "${DATA_PATH}/temp.dta", replace
 
 
 *********************
