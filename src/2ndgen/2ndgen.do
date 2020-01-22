@@ -85,7 +85,7 @@ end
 ********************************************************************************
 
 u "${SOEP_PATH}/ppathl.dta", clear
-keep pid syear corigin* mig* aref* germborn*
+keep pid syear corigin* mig* germborn*
 
 * indirect migration background implies born in Germany from immigrant parents
 *   but it does not imply German nationality or citizenship

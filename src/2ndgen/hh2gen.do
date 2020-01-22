@@ -32,9 +32,16 @@ duplicates drop hid, force
 keep hid
 
 * filter the tracking dataset by hid retrieving the unique identifiers
-merge 1:m hid using "${SOEP_PATH}/ppathl.dta", ///
-    keepus(pid syear parid sex gebjahr hid cid gebmonat piyear) ///
-    keep(match) nogen
+*   and retrieve refugee background
+merge 1:m hid using "${SOEP_PATH}/ppathl.dta",                               ///
+    keepus(                                                                  ///
+        pid syear hid cid parid     /* unique identifiers and survey year */ ///
+        sex gebjahr gebmonat piyear /* gender and variables for age       */ ///
+        arefback                    /* migration and refugee background   */ ///
+     ) keep(match) nogen
+
+* clean no answer about refugee experience
+mvdecode arefback, mv(-8/-1 = .)
 
 * add information of indirect ancestry for whom in the household is
 *   second-generation, later we will record it also for direct migrants
@@ -73,7 +80,7 @@ g female = (sex == 2) if !missing(sex) | !inlist(sex, -1, -3)
 ********************************************************************************
 
 * retrieve some information about employment and education from the pgen
-merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
+merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta",                         ///
     keepus(                                                                ///
         pgfamstd  /* marital status in survey year                      */ ///
         pgstib    /* occupational position                              */ ///
@@ -136,12 +143,12 @@ g voceduc = (inlist(pgisced97, 3, 4)) if !missing(pgisced97)
 *   together with the type of tertiary education
 local stubvar = "a b c d"
 foreach i in `stubvar' {
-    g aux`i' = ( ///
+    g aux`i' = (                                                            ///
         inrange(pgtrain`i', 6700, 6709) | inrange(pgtrain`i', 6910, 6919) | ///
         inrange(pgtrain`i', 7040, 7049) | inrange(pgtrain`i', 7530, 7545) | ///
         inrange(pgtrain`i', 7711, 7739) | inrange(pgtrain`i', 8810, 8819) | ///
-        inlist(pgtrain`i', 7501, 7502, 7503, 7511, 7512, ///
-            7513, 7572, 7854, 7855, 7856) ///
+        inlist(pgtrain`i', 7501, 7502, 7503, 7511, 7512,                    ///
+            7513, 7572, 7854, 7855, 7856)                                   ///
     ) if !missing(pgtrain`i') & !inlist(pgtrain`i', -1, -3)
 }
 
@@ -161,12 +168,12 @@ g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
     3419, 3421) | inlist(pgisco08, 1211, 1346, 2631, 3311, ///
     3312, 3334, 4213, 4214, 4312) | inlist(pgnace, 65, 66, 67, 70))
 
-* keep just the generated variables
-drop pg* sex gebmonat piyear
+* keep just the generated variables and the refugee background
+drop pg* sex gebmonat piyear arefback corigin migback
 
 * open the individual long dataset to retrieve some variables
-merge 1:1 pid syear using "${SOEP_PATH}/pl.dta", ///
-    keepus(
+merge 1:1 pid syear using "${SOEP_PATH}/pl.dta",                     ///
+    keepus(                                                          ///
         plh0258_h /* religion background of the individual        */ ///
         plj0078   /* feeling german 1 to 5                        */ ///
         plj0080   /* connected with the country of origin 1 to 5  */ ///
@@ -202,7 +209,7 @@ label language DE
 drop aux* maxyear plh0258_h
 
 * recode missing values in the qualitative german identity variables
-foreach var in plj0078 plj0080 plj0082 plj0083 plj0085 plj0077 {
+foreach var of varlist plj0078 plj0080 plj0082 plj0083 plj0085 plj0077 {
     mvdecode `var', mv(-8/-1 = .)
 }
 
@@ -269,7 +276,7 @@ preserve
 keep pid
 duplicates drop pid, force
 tempfile temp
-save `temp'
+save `temp', replace
 
 local stubvar = "f m"
 foreach i in `stubvar' {
@@ -336,7 +343,7 @@ foreach i in `stubvar' {
     rename hid `i'hid
     keep `i'nr syear `i'hsize `i'hnetinc* `i'hnetwth* `i'hid
     tempfile `i'temp
-    save ``i'temp'
+    save ``i'temp', replace
 }
 
 restore
@@ -352,7 +359,7 @@ foreach i in `stubvar' {
     preserve
     drop if `i'nr < 0 | missing(`i'nr)
     tempfile `i'nopid
-    save ``i'nopid'
+    save ``i'nopid', replace
     restore
     * it is many-to-many because one parent can have multiple children in the
     *   survey and his household exists years before the children's household
@@ -372,64 +379,107 @@ g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 *   the survey and self-reported information by the interviewed individuals.   *
 ********************************************************************************
 
+preserve
+* retrieve the number of siblings for each individual 
 u "${SOEP_PATH}/bioparen.dta", clear
-keep persnr bioyear ?birth ?nr ?ydeath ?reli ?sedu living? ?currloc ?egp ///
-    sibl numbs numb ?fight
-
+keep persnr sibl nums numb living?
 * count siblings in the parental information
 g auxs = nums if nums >= 0
 replace auxs = 0 if sibl == 0
 g auxb = numb if numb >= 0
 replace auxb = 0 if sibl == 0
 egen nsibs = rowtotal(auxs auxb), missing
-drop aux*
+keep persnr nsibs
+rename persnr pid
+tempfile temp
+save `temp', replace
+restore
+* merge back the siblings information
+merge m:1 pid using `temp', keep(master match) nogen
+save `temp', replace
 
-drop pid
-rename bioyear syear
-local stubvar = "f m"
-foreach i in `stubvar' {
-    rename `i'nr pid
-    preserve
-    replace pid = . if pid < 0
-    drop if missing(pid)
-    tempfile `i'nopid
-    save ``i'nopid'
-    restore
-    merge 1:m pid syear using "${SOEP_PATH}/pgen.dta", ///
-        keepus(pglabnet) keep(master match) nogen
-    tempfile `i'yespid
-    save `i'yespid
+* try with fathers first
+u "${SOEP_PATH}/bioparen.dta", clear
+local varlist = "fybirth fnr fydeath freli fsedu fegp ffight"
+foreach var of varlist `varlist' {
+    mvdecode `var', mv(-8/-1 = .)
 }
 
-* parents time of immigration, length of stay in Germany and some demographics 
-*   that I can get just for the parents still in the survey or that were
-*   in the longitudinal panel before (use personal identifier)
+* create a religion categorical variable in line with the previous
+g freligion = 1 if freli == 1
+replace freligion = 2 if freli == 2
+replace freligion = 3 if freli == 3
+replace freligion = 4 if freli == 7
+replace freligion = 5 if freli == 4
+replace freligion = 6 if freli == 5
+replace freligion = 7 if freli == 6
 
-* ppath -> immiyear (year moved to Germany)
-* migration sample (year mother/father moved to Germany)
+duplicates drop fnr, force
+rename fnr pid
 
-* feel german plj0078 
-* connected with country of origin plj080
-* feeling of not belonging plj0082
-* feel at home in country of origin plj0083
-* wish to remain in Germany permanently plj0085
+g fcollege = (fsedu == 4) if !missing(fsedu)
+g fhsdegree = (fcollege == 1 | fsedu == 3) if !missing(fsedu)
 
-* usual language spoken plj0077 (duplicable)
+preserve
+keep if pid < 0 | missing(pid)
+tempfile fnopid
+save `fnopid', replace
+restore
+
+keep if pid > 0 & missing(pid)
+
+
+merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(immiyear syear) keep(match) nogen
+merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", keepus(pgisced97 pgpsbil) keep(match) nogen
+
+bys pid : egen maxyear1 = max(syear) if !missing(pgisced97)
+bys pid : egen maxyear2 = max(syear) if !missing(pgpsbil)
+g aux1 = pgisced97 if syear == maxyear1
+g aux2 = pgpsbil   if syear == maxyear2
+bys pid : egen aux3 = total(aux1)
+bys pid : egen aux4 = total(aux2)
+
+replace fcollege  = (inlist(aux3, 5, 6) | aux4 == 4) if missing(fcollege)
+replace fhsdegree = (fcollege == 1 | aux3 == 4 | aux4 == 3) if missing(fhsdegree)
+duplicates drop pid, force
+
+* TODO: clean the mess and finish here
+
+* compute
+save `temp', replace
+local stubvar = "f m"
+foreach i in `stubvar' {
+    u "${SOEP_PATH}/bioparen.dta", clear
+    keep `i'ybirth `i'nr `i'ydeath `i'reli `i'sedu `i'currloc `i'egp `i'fight
+    rename `i'nr pid
+    preserve
+    drop if pid < 0 | missing(pid)
+    tempfile `i'nopid
+    save ``i'nopid', replace
+    restore
+    merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
+        keepus(immiyear syear) keep(master match) nogen
+}
 
 ********************************************************************************
 * Step 7: Reverse all the information in one household row in order to merge   *
 *   the current household informaiton given the second-generation head of      *
-*   household from the aggregated datasets.                                    *
+*   household from the aggregated datasets. (we keep just the partner)         *
 ********************************************************************************
+
+* TODO: I put the corigin and migback at the beginning, so you already
+* have them at this point, remember to remove them for the head of household
 
 preserve
 * temporary save the variables we want to keep from the partner
 keep pid syear age ancestry ?native ?secgen female employed selfemp ///
-    yeduc college hsdegree etecon finjob egp
+    yeduc college hsdegree etecon finjob egp ///
+    arefback religion foreignid langspoken
 rename (age ancestry ?native ?secgen female employed selfemp yeduc ///
     college hsdegree etecon finjob egp) (age_s ancestry_s ?native_s /// 
     ?secgen_s female_s employed_s selfemp_s yeduc_s college_s /// 
-    hsdegree_s etecon_s finjob_s egp_s)
+    hsdegree_s etecon_s finjob_s egp_s ///
+    arefback_s religion_s foreignid_s langspoken_s)
 tempfile partners
 save `partners'
 restore
@@ -455,7 +505,7 @@ drop if missing(pid)
 
 * retrieve country of origin and migration background of the partner
 merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
-    keepus(corigin migback) keep(match) nogen
+    keepus(corigin migback immiyear) keep(match) nogen
 * include all the demographics for the spouse
 merge 1:1 pid syear using `partners', keep(match) nogen
 
