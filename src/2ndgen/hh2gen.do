@@ -164,9 +164,18 @@ g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
 * keep just the generated variables
 drop pg* sex gebmonat piyear
 
-* acquire religion or church for the single individuals (harmonised) from pl
+* open the individual long dataset to retrieve some variables
 merge 1:1 pid syear using "${SOEP_PATH}/pl.dta", ///
-   keepus(plh0258_h) keep(master match) nogen
+    keepus(
+        plh0258_h /* religion background of the individual        */ ///
+        plj0078   /* feeling german 1 to 5                        */ ///
+        plj0080   /* connected with the country of origin 1 to 5  */ ///
+        plj0082   /* feeling of not belonging 1 to 5              */ ///
+        plj0083   /* feel at home in the country of origin 1 to 5 */ ///
+        plj0085   /* wish to remain in Germany permanently 1 to 5 */ ///
+        plj0077   /* usual language spoken three levels           */ ///
+    ) keep(master match) nogen
+
 * religion is available only for some waves, assume it is religion background
 gen aux1 = plh0258_h if plh0258_h > 0 | plh0258_h == 11
 bys pid : egen maxyear = max(syear) if !missing(aux1)
@@ -191,6 +200,18 @@ label variable religion "Religious Group"
 label language DE
 
 drop aux* maxyear plh0258_h
+
+* recode missing values in the qualitative german identity variables
+foreach var in plj0078 plj0080 plj0082 plj0083 plj0085 plj0077 {
+    mvdecode `var', mv(-8/-1 = .)
+}
+
+* the variables are scaled from one to five, the higher the less german
+egen foreignid = rowmedian(plj0078 plj0080 plj0082 plj0083 plj0085)
+* copy the usual language spoken in another variable
+g langspoken = plj0077
+
+drop plj*
 
 ********************************************************************************
 * Step 4: Identification of the head of household as defined in the GSOEP,     *
@@ -381,7 +402,19 @@ foreach i in `stubvar' {
 }
 
 * parents time of immigration, length of stay in Germany and some demographics 
-*   that I can get just for the parents still in the 
+*   that I can get just for the parents still in the survey or that were
+*   in the longitudinal panel before (use personal identifier)
+
+* ppath -> immiyear (year moved to Germany)
+* migration sample (year mother/father moved to Germany)
+
+* feel german plj0078 
+* connected with country of origin plj080
+* feeling of not belonging plj0082
+* feel at home in country of origin plj0083
+* wish to remain in Germany permanently plj0085
+
+* usual language spoken plj0077 (duplicable)
 
 ********************************************************************************
 * Step 7: Reverse all the information in one household row in order to merge   *
