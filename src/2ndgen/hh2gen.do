@@ -267,9 +267,8 @@ drop aux
 
 * we save the current dataset to avoid the memory leak that we have to solve
 *   in Linux when running the whole script coming to pl
-save "${DATA_PATH}/temp.dta", replace
-
-use "${DATA_PATH}/temp.dta", clear
+* save "${DATA_PATH}/temp.dta", replace
+* use "${DATA_PATH}/temp.dta", clear
 
 preserve
 
@@ -285,7 +284,7 @@ foreach i in `stubvar' {
 
     * keep only if it is possible to link the parent
     keep persnr `i'nr
-    keep if `i'nr > 0
+    keep if `i'nr > 0 & !missing(`i'nr)
     rename persnr pid
 
     * keep parent identifier just for  the relevant households
@@ -298,12 +297,12 @@ foreach i in `stubvar' {
     merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
         keepus(hid syear) keep(match) nogen
     drop if hid < 0
-    duplicates drop hid, force
+    duplicates drop hid syear, force
     rename pid `i'nr
 
     * calculate parent's current household size
-    merge 1:m hid using "${SOEP_PATH}/ppathl.dta", ///
-        keepus(pid syear) keep(match) nogen
+    merge 1:m hid syear using "${SOEP_PATH}/ppathl.dta", ///
+        keepus(pid) keep(match) nogen
     bys hid syear : egen `i'hsize = count(pid)
     collapse (mean) `i'hsize `i'nr, by(hid syear) 
 
@@ -324,8 +323,7 @@ foreach i in `stubvar' {
     reshape long hgihinc w011h, i(hid syear) j(imp)
     * part of the net income is imputed, the other part is not
     *   and correct for flagged implausible values of net income 
-    replace hgihinc = . if hgihinc < 0
-    replace hghinc  = . if hghinc  < 0
+    mvdecode hgihinc hghinc w011h, mv(-8/-1 = .)
     * apply household weights and average for imputations
     collapse (mean) `i'nr `i'hsize hghinc hgihinc w011h ///
         [pw=hhrf], by(hid syear imp)
@@ -343,7 +341,7 @@ foreach i in `stubvar' {
     keep `i'nr syear `i'hsize `i'hnetinc* `i'hnetwth* `i'hid
     tempfile `i'temp
     save ``i'temp', replace
-    save "${DATA_PATH}/`i'temp.dta", replace
+    * save "${DATA_PATH}/`i'temp.dta", replace
 }
 
 restore
@@ -362,10 +360,12 @@ foreach i in `stubvar' {
     tempfile `i'nopid
     save ``i'nopid', replace
     restore
+
+    drop if missing(`i'nr)
+
     * it is many-to-many because one parent can have multiple children in the
     *   survey and his household exists years before the children's household
-    * merge m:m `i'nr syear using ``i'temp', keep(master match) nogen
-    merge m:m `i'nr syear using "${DATA_PATH}/`i'temp.dta", keep(master match) nogen
+    merge m:m `i'nr syear using ``i'temp', keep(master match) nogen
     * re-attach individuals without parent in the survey
     append using ``i'nopid' 
 } 
