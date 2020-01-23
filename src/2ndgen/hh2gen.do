@@ -40,8 +40,8 @@ merge 1:m hid using "${SOEP_PATH}/ppathl.dta",                               ///
         arefback                    /* migration and refugee background   */ ///
      ) keep(match) nogen
 
-* clean no answer about refugee experience
-mvdecode arefback, mv(-8/-1 = .)
+* clean missing values in refugee experience and partner identifier
+mvdecode arefback parid, mv(-8/-1 = .)
 
 * add information of indirect ancestry for whom in the household is
 *   second-generation, later we will record it also for direct migrants
@@ -169,7 +169,7 @@ g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
     3312, 3334, 4213, 4214, 4312) | inlist(pgnace, 65, 66, 67, 70))
 
 * keep just the generated variables and the refugee background
-drop pg* sex gebmonat piyear arefback corigin migback
+drop pg* sex gebmonat piyear arefback
 
 * open the individual long dataset to retrieve some variables
 merge 1:1 pid syear using "${SOEP_PATH}/pl.dta",                     ///
@@ -209,9 +209,8 @@ label language DE
 drop aux* maxyear plh0258_h
 
 * recode missing values in the qualitative german identity variables
-foreach var of varlist plj0078 plj0080 plj0082 plj0083 plj0085 plj0077 {
-    mvdecode `var', mv(-8/-1 = .)
-}
+local varlist = "plj0078 plj0080 plj0082 plj0083 plj0085 plj0077"
+mvdecode `varlist', mv(-8/-1 = .)
 
 * the variables are scaled from one to five, the higher the less german
 egen foreignid = rowmedian(plj0078 plj0080 plj0082 plj0083 plj0085)
@@ -269,6 +268,7 @@ drop aux
 * we save the current dataset to avoid the memory leak that we have to solve
 *   in Linux when running the whole script coming to pl
 save "${DATA_PATH}/temp.dta", replace
+
 use "${DATA_PATH}/temp.dta", clear
 
 preserve
@@ -297,7 +297,6 @@ foreach i in `stubvar' {
     * retrieve current household identifier for the parent
     merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
         keepus(hid syear) keep(match) nogen
-    drop syear
     drop if hid < 0
     duplicates drop hid, force
     rename pid `i'nr
@@ -344,6 +343,7 @@ foreach i in `stubvar' {
     keep `i'nr syear `i'hsize `i'hnetinc* `i'hnetwth* `i'hid
     tempfile `i'temp
     save ``i'temp', replace
+    save "${DATA_PATH}/`i'temp.dta", replace
 }
 
 restore
@@ -352,18 +352,20 @@ rename pid persnr
 * retrieve parents' identifiers from biological information
 merge m:1 persnr using "${SOEP_PATH}/bioparen.dta", ///
     keepus(fnr mnr) keep(master match) nogen
+mvdecode ?nr, mv(-8/-1 = .)
 
 * for each parent, merge the household information
 local stubvar = "f m"
 foreach i in `stubvar' {
     preserve
-    drop if `i'nr < 0 | missing(`i'nr)
+    keep if missing(`i'nr)
     tempfile `i'nopid
     save ``i'nopid', replace
     restore
     * it is many-to-many because one parent can have multiple children in the
     *   survey and his household exists years before the children's household
-    merge m:m `i'nr syear using ``i'temp', keep(master match) nogen
+    * merge m:m `i'nr syear using ``i'temp', keep(master match) nogen
+    merge m:m `i'nr syear using "${DATA_PATH}/`i'temp.dta", keep(master match) nogen
     * re-attach individuals without parent in the survey
     append using ``i'nopid' 
 } 
@@ -378,144 +380,3 @@ g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 *   dataset, where information about parents is generated from parents within  *
 *   the survey and self-reported information by the interviewed individuals.   *
 ********************************************************************************
-
-preserve
-* retrieve the number of siblings for each individual 
-u "${SOEP_PATH}/bioparen.dta", clear
-keep persnr sibl nums numb living?
-* count siblings in the parental information
-g auxs = nums if nums >= 0
-replace auxs = 0 if sibl == 0
-g auxb = numb if numb >= 0
-replace auxb = 0 if sibl == 0
-egen nsibs = rowtotal(auxs auxb), missing
-keep persnr nsibs
-rename persnr pid
-tempfile temp
-save `temp', replace
-restore
-* merge back the siblings information
-merge m:1 pid using `temp', keep(master match) nogen
-save `temp', replace
-
-* try with fathers first
-u "${SOEP_PATH}/bioparen.dta", clear
-local varlist = "fybirth fnr fydeath freli fsedu fegp ffight"
-foreach var of varlist `varlist' {
-    mvdecode `var', mv(-8/-1 = .)
-}
-
-* create a religion categorical variable in line with the previous
-g freligion = 1 if freli == 1
-replace freligion = 2 if freli == 2
-replace freligion = 3 if freli == 3
-replace freligion = 4 if freli == 7
-replace freligion = 5 if freli == 4
-replace freligion = 6 if freli == 5
-replace freligion = 7 if freli == 6
-
-duplicates drop fnr, force
-rename fnr pid
-
-g fcollege = (fsedu == 4) if !missing(fsedu)
-g fhsdegree = (fcollege == 1 | fsedu == 3) if !missing(fsedu)
-
-preserve
-keep if pid < 0 | missing(pid)
-tempfile fnopid
-save `fnopid', replace
-restore
-
-keep if pid > 0 & missing(pid)
-
-
-merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(immiyear syear) keep(match) nogen
-merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", keepus(pgisced97 pgpsbil) keep(match) nogen
-
-bys pid : egen maxyear1 = max(syear) if !missing(pgisced97)
-bys pid : egen maxyear2 = max(syear) if !missing(pgpsbil)
-g aux1 = pgisced97 if syear == maxyear1
-g aux2 = pgpsbil   if syear == maxyear2
-bys pid : egen aux3 = total(aux1)
-bys pid : egen aux4 = total(aux2)
-
-replace fcollege  = (inlist(aux3, 5, 6) | aux4 == 4) if missing(fcollege)
-replace fhsdegree = (fcollege == 1 | aux3 == 4 | aux4 == 3) if missing(fhsdegree)
-duplicates drop pid, force
-
-* TODO: clean the mess and finish here
-
-* compute
-save `temp', replace
-local stubvar = "f m"
-foreach i in `stubvar' {
-    u "${SOEP_PATH}/bioparen.dta", clear
-    keep `i'ybirth `i'nr `i'ydeath `i'reli `i'sedu `i'currloc `i'egp `i'fight
-    rename `i'nr pid
-    preserve
-    drop if pid < 0 | missing(pid)
-    tempfile `i'nopid
-    save ``i'nopid', replace
-    restore
-    merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
-        keepus(immiyear syear) keep(master match) nogen
-}
-
-********************************************************************************
-* Step 7: Reverse all the information in one household row in order to merge   *
-*   the current household informaiton given the second-generation head of      *
-*   household from the aggregated datasets. (we keep just the partner)         *
-********************************************************************************
-
-* TODO: I put the corigin and migback at the beginning, so you already
-* have them at this point, remember to remove them for the head of household
-
-preserve
-* temporary save the variables we want to keep from the partner
-keep pid syear age ancestry ?native ?secgen female employed selfemp ///
-    yeduc college hsdegree etecon finjob egp ///
-    arefback religion foreignid langspoken
-rename (age ancestry ?native ?secgen female employed selfemp yeduc ///
-    college hsdegree etecon finjob egp) (age_s ancestry_s ?native_s /// 
-    ?secgen_s female_s employed_s selfemp_s yeduc_s college_s /// 
-    hsdegree_s etecon_s finjob_s egp_s ///
-    arefback_s religion_s foreignid_s langspoken_s)
-tempfile partners
-save `partners'
-restore
-
-* keep only the head of household
-keep if stell_h == 0
-* rename partner id for the merge
-rename (pid parid) (pid_h pid)
-* replace identifier when there is no partner
-replace pid = . if pid == -2
-drop stell_h
-
-preserve
-* save households with no partners
-keep if missing(pid)
-rename  (pid_h pid) (pid parid)
-tempfile nopartners
-save `nopartners'
-restore
-
-* we keep only heads of household with the partner
-drop if missing(pid)
-
-* retrieve country of origin and migration background of the partner
-merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
-    keepus(corigin migback immiyear) keep(match) nogen
-* include all the demographics for the spouse
-merge 1:1 pid syear using `partners', keep(match) nogen
-
-* integrate ancestry when the spouse is not a second-generation
-replace ancestry_s = corigin if migback != 3
-rename (migback pid_h pid) (migback_s pid parid)
-
-* reintegrate households where there is not a partner
-append using `nopartners'
-
-keep hid pid syear cid gebjahr parid ancestry* ?native* ?secgen* age* ///
-    female* married* employed* selfemp* civserv* ineduc* retired* yeduc* ///
-    hsdegree* voceduc* etecon* egp* finjob* hsize nchild migback_s
