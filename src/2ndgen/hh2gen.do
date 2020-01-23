@@ -380,3 +380,180 @@ g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 *   dataset, where information about parents is generated from parents within  *
 *   the survey and self-reported information by the interviewed individuals.   *
 ********************************************************************************
+
+preserve
+* retrieve the number of siblings for each individual 
+u "${SOEP_PATH}/bioparen.dta", clear
+keep persnr sibl nums numb
+
+* count siblings in the parental information
+g auxs = nums if nums >= 0
+replace auxs = 0 if sibl == 0
+g auxb = numb if numb >= 0
+replace auxb = 0 if sibl == 0
+egen nsibs = rowtotal(auxs auxb), missing
+
+keep persnr nsibs
+rename persnr pid
+tempfile temp
+save `temp', replace
+restore
+
+* merge back the siblings information
+merge m:1 pid using `temp', keep(master match) nogen
+save `temp', replace
+
+* try with fathers first
+u "${SOEP_PATH}/bioparen.dta", clear
+local varlist = "fybirth fnr fydeath freli fsedu fegp ffight"
+mvdecode `varlist', mv(-8/-1 = .)
+keep persnr `varlist'
+
+* create a religion categorical variable in line with the previous
+* we copy the label variable just later at things done
+g freligion = 1 if freli == 1
+replace freligion = 2 if freli == 2
+replace freligion = 3 if freli == 3
+replace freligion = 4 if freli == 7
+replace freligion = 5 if freli == 4
+replace freligion = 6 if freli == 5
+replace freligion = 7 if freli == 6
+
+* initialise the college and high school degree dummies
+g fcollege = (fsedu == 4) if !missing(fsedu)
+g fhsdegree = (fcollege == 1 | fsedu == 3) if !missing(fsedu)
+drop fsedu freli
+
+preserve
+* keep just the parents only present in the biographical dataset
+keep if missing(fnr)
+tempfile fnopid
+save `fnopid', replace
+restore
+
+* drop not linkable parents
+drop if fnr < 0 | missing(fnr)
+* keep just the identifier for the parent 
+duplicates drop fnr, force
+rename fnr pid
+
+merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(immiyear syear) keep(match) nogen
+merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", keepus(pgisced97 pgpsbil) keep(match) nogen
+
+* cleanup missing flags
+mvdecode immiyear pgisced97 pgpsbil, mv(-8/-1 = .)
+
+* find the highest level of education achieved and save
+bys pid : egen maxyear1 = max(syear) if !missing(pgisced97)
+bys pid : egen maxyear2 = max(syear) if !missing(pgpsbil)
+g aux1 = pgisced97 if syear == maxyear1
+g aux2 = pgpsbil   if syear == maxyear2
+bys pid : egen aux3 = total(aux1)
+bys pid : egen aux4 = total(aux2)
+* compare the saved education level with the one in the biological dataset
+replace fcollege  = (inlist(aux3, 5, 6) | aux4 == 4) if missing(fcollege)
+replace fhsdegree = (fcollege == 1 | aux3 == 4 | aux4 == 3) if missing(fhsdegree)
+drop aux? maxyear? pgisced97 pgpsbil syear
+* all information recorded is supposed to be time-constant
+*   or the latest updated information at least
+duplicates drop pid, force
+rename pid fnr
+append using `fnopid'
+rename persnr pid
+
+merge 1:m pid using `temp', keep(using match) nogen
+
+* calculate length of stay in Germany if still there and not dead
+* first use migspell and immiyear in ppathl when applies
+* to calculate the length of stay of not dead people and in the sample
+* then subtract the total length of stay from here using syear for the panel
+u "${SOEP_PATH}/ppathl.dta", clear
+duplicates drop pid, force
+keep pid immiyear
+mvdecode immiyear, mv(-8/-1 = .)
+merge 1:m pid using "${SOEP_PATH}/migspell.dta", keep(match) nogen
+gen yearafter = starty[_n+1]
+bys pid : gen aux1 = yearafter - starty if move == 1 
+gen aux2 = nspells - 1
+gen aux3 = aux1 if aux2 != mignr
+bys pid : egen addyears = total(aux3)
+keep pid immiyear addyears
+duplicates drop pid, force
+merge 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear) 
+
+* TODO: clean the mess and finish here
+
+* compute
+save `temp', replace
+local stubvar = "f m"
+foreach i in `stubvar' {
+    u "${SOEP_PATH}/bioparen.dta", clear
+    keep `i'ybirth `i'nr `i'ydeath `i'reli `i'sedu `i'currloc `i'egp `i'fight
+    rename `i'nr pid
+    preserve
+    drop if pid < 0 | missing(pid)
+    tempfile `i'nopid
+    save ``i'nopid', replace
+    restore
+    merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
+        keepus(immiyear syear) keep(master match) nogen
+}
+
+********************************************************************************
+* Step 7: Reverse all the information in one household row in order to merge   *
+*   the current household informaiton given the second-generation head of      *
+*   household from the aggregated datasets. (we keep just the partner)         *
+********************************************************************************
+
+* TODO: I put the corigin and migback at the beginning, so you already
+* have them at this point, remember to remove them for the head of household
+
+preserve
+* temporary save the variables we want to keep from the partner
+keep pid syear age ancestry ?native ?secgen female employed selfemp ///
+    yeduc college hsdegree etecon finjob egp ///
+    arefback religion foreignid langspoken
+rename (age ancestry ?native ?secgen female employed selfemp yeduc ///
+    college hsdegree etecon finjob egp) (age_s ancestry_s ?native_s /// 
+    ?secgen_s female_s employed_s selfemp_s yeduc_s college_s /// 
+    hsdegree_s etecon_s finjob_s egp_s ///
+    arefback_s religion_s foreignid_s langspoken_s)
+tempfile partners
+save `partners'
+restore
+
+* keep only the head of household
+keep if stell_h == 0
+* rename partner id for the merge
+rename (pid parid) (pid_h pid)
+* replace identifier when there is no partner
+replace pid = . if pid == -2
+drop stell_h
+
+preserve
+* save households with no partners
+keep if missing(pid)
+rename  (pid_h pid) (pid parid)
+tempfile nopartners
+save `nopartners'
+restore
+
+* we keep only heads of household with the partner
+drop if missing(pid)
+
+* retrieve country of origin and migration background of the partner
+merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
+    keepus(corigin migback immiyear) keep(match) nogen
+* include all the demographics for the spouse
+merge 1:1 pid syear using `partners', keep(match) nogen
+
+* integrate ancestry when the spouse is not a second-generation
+replace ancestry_s = corigin if migback != 3
+rename (migback pid_h pid) (migback_s pid parid)
+
+* reintegrate households where there is not a partner
+append using `nopartners'
+
+keep hid pid syear cid gebjahr parid ancestry* ?native* ?secgen* age* ///
+    female* married* employed* selfemp* civserv* ineduc* retired* yeduc* ///
+    hsdegree* voceduc* etecon* egp* finjob* hsize nchild migback_s
