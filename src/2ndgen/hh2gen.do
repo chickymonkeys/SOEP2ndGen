@@ -267,8 +267,6 @@ drop aux
 
 * we save the current dataset to avoid the memory leak that we have to solve
 *   in Linux when running the whole script coming to pl
-* save "${DATA_PATH}/temp.dta", replace
-* use "${DATA_PATH}/temp.dta", clear
 
 preserve
 
@@ -341,7 +339,6 @@ foreach i in `stubvar' {
     keep `i'nr syear `i'hsize `i'hnetinc* `i'hnetwth* `i'hid
     tempfile `i'temp
     save ``i'temp', replace
-    * save "${DATA_PATH}/`i'temp.dta", replace
 }
 
 restore
@@ -381,6 +378,9 @@ g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 *   the survey and self-reported information by the interviewed individuals.   *
 ********************************************************************************
 
+save "${DATA_PATH}/temp.dta", replace
+use "${DATA_PATH}/temp.dta", clear
+
 preserve
 * retrieve the number of siblings for each individual 
 u "${SOEP_PATH}/bioparen.dta", clear
@@ -403,7 +403,7 @@ restore
 merge m:1 pid using `temp', keep(master match) nogen
 save `temp', replace
 
-* try with fathers first
+*** try with fathers first ***
 u "${SOEP_PATH}/bioparen.dta", clear
 local varlist = "fybirth fnr fydeath freli fsedu fegp ffight"
 mvdecode `varlist', mv(-8/-1 = .)
@@ -432,7 +432,7 @@ save `fnopid', replace
 restore
 
 * drop not linkable parents
-drop if fnr < 0 | missing(fnr)
+drop if missing(fnr)
 * keep just the identifier for the parent 
 duplicates drop fnr, force
 rename fnr pid
@@ -462,26 +462,30 @@ append using `fnopid'
 rename persnr pid
 
 merge 1:m pid using `temp', keep(using match) nogen
+save `temp', replace
 
 * calculate length of stay in Germany if still there and not dead
 * first use migspell and immiyear in ppathl when applies
 * to calculate the length of stay of not dead people and in the sample
 * then subtract the total length of stay from here using syear for the panel
-u "${SOEP_PATH}/ppathl.dta", clear
-duplicates drop pid, force
-keep pid immiyear
-mvdecode immiyear, mv(-8/-1 = .)
-merge 1:m pid using "${SOEP_PATH}/migspell.dta", keep(match) nogen
-gen yearafter = starty[_n+1]
-bys pid : gen aux1 = yearafter - starty if move == 1 
+
+u "${SOEP_PATH}/migspell.dta", clear
+g yearafter = starty[_n+1]
+bys pid : g aux1 = yearafter - starty if move == 1 
 gen aux2 = nspells - 1
-gen aux3 = aux1 if aux2 != mignr
+g aux3 = aux1 if aux2 != mignr
 bys pid : egen addyears = total(aux3)
-keep pid immiyear addyears
+keep pid addyears
 duplicates drop pid, force
-merge 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear) 
+merge 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear) keep(master match) nogen
+g lastyear = ylint if yperg == 5
+merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(immiyear syear) keep(using match) nogen
 
 * TODO: clean the mess and finish here
+* add the exit, compute the length of stay from immiyear and ydeath
+* problem, we know just the last immigration year so we cannot quanitfy 
+* precisely the length of stay per survey year
+* br pid syear immiyear migback if immiyear > syear & !missing(immiyear)
 
 * compute
 save `temp', replace
