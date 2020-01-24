@@ -378,6 +378,15 @@ g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 *   the survey and self-reported information by the interviewed individuals.   *
 ********************************************************************************
 
+* steps from the aggregated dataset
+* get number of siblings in earlier househodls (maybe it is useful)
+* retrieve information about parents with and without link
+* merge back, including immigration year
+* save
+* use migspell for people available
+
+
+
 save "${DATA_PATH}/temp.dta", replace
 use "${DATA_PATH}/temp.dta", clear
 
@@ -427,6 +436,7 @@ drop fsedu freli
 preserve
 * keep just the parents only present in the biographical dataset
 keep if missing(fnr)
+rename persnr pid
 tempfile fnopid
 save `fnopid', replace
 restore
@@ -457,29 +467,56 @@ drop aux? maxyear? pgisced97 pgpsbil syear
 * all information recorded is supposed to be time-constant
 *   or the latest updated information at least
 duplicates drop pid, force
-rename pid fnr
-append using `fnopid'
-rename persnr pid
+rename (pid persnr) (fnr pid)
 
-merge 1:m pid using `temp', keep(using match) nogen
-save `temp', replace
+preserve
+
+* do not append the people without parent identifier yet
 
 * calculate length of stay in Germany if still there and not dead
 * first use migspell and immiyear in ppathl when applies
 * to calculate the length of stay of not dead people and in the sample
 * then subtract the total length of stay from here using syear for the panel
 
+* use migspell to look into the migration history of individuals when
+*   available and calculate the years in Germany before the last arrival
+*   recorded in the variable immiyear of the tracking dataset
 u "${SOEP_PATH}/migspell.dta", clear
+* recode missing flags for the variables we are interested in
+mvdecode starty move nspells mignr, mv(-8/-1 = .)
+* copy the one year after the current record
 g yearafter = starty[_n+1]
-bys pid : g aux1 = yearafter - starty if move == 1 
-gen aux2 = nspells - 1
-g aux3 = aux1 if aux2 != mignr
+* calculate the difference between the starty and the consecutive move
+*   if the individual has moved in Germany from another country (n years)
+bys pid : g aux1 = yearafter - starty if move == 1
+* generate index of number of total moves
+g aux2 = nspells - 1
+* copy the information in aux1 if not the last move in Germany
+g aux3 = aux1 if aux2 != mignr 
+* calculate the total years of stay in Germany before settling
 bys pid : egen addyears = total(aux3)
 keep pid addyears
 duplicates drop pid, force
-merge 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear) keep(master match) nogen
-g lastyear = ylint if yperg == 5
-merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(immiyear syear) keep(using match) nogen
+
+* merge with the exit dataset to see whether some people are still alive
+*   but they have migrated from Germany to recover the ending year
+merge 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear)
+mvdecode yperg ylint, mv(-8/-1 = .)
+g lastyear = ylint if yperg == 5 & ylint != 0
+* assume that last year is the survey year if no ylint
+replace lastyear = syear if yperg == 5 & missing(lastyear) 
+* it is safe to keep one observation of the identifier to
+*   preserve the last available year before moving from Germany
+duplicates drop pid if _m == 2, force
+keep pid addyears lastyear
+rename pid fnr
+tempfile migspell_exit
+save `migspell_exit', replace
+restore
+
+merge 1:1 fnr using `migspell_exit', keep(master match) nogen
+append using `fnopid'
+merge 1:m pid using `temp', keep(using match) nogen
 
 * TODO: clean the mess and finish here
 * add the exit, compute the length of stay from immiyear and ydeath
