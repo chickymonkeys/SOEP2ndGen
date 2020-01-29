@@ -85,7 +85,7 @@ end
 ********************************************************************************
 
 u "${SOEP_PATH}/ppathl.dta", clear
-keep pid syear corigin* mig* germborn*
+keep pid syear corigin* mig* germborn* arefback
 
 * indirect migration background implies born in Germany from immigrant parents
 *   but it does not imply German nationality or citizenship
@@ -94,13 +94,16 @@ count if migback == 3 & germborn != 1 & corigin != 1
 * keep if and only if indirect migration background is recorded
 keep if migback == 3
 
+* decode the refugee experience indicator variable
+replace arefback = . if arefback < 0
+
 * retrieve from person generated dataset
 mer 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
     keepus(pgnation) keep(master match) nogen
 
 * run the ad-hoc program on pgnation
 sgenmode pgnation, gen(ancestry1) i(pid) t(syear)
-keep pid syear ancestry*
+keep pid syear ancestry* arefback
 
 ********************************************************************************
 * Step 2 (5): Include Nationality/Citizenship and Country Born In + Country of *
@@ -124,7 +127,7 @@ g ancestry2 = temp1
 replace ancestry2 = temp2 if (ancestry2 == 3) & ///
     (!missing(temp2) & temp2 > 3) | missing(ancestry2)
 g ancestry5 = temp3
-keep pid syear ancestry*
+keep pid syear ancestry* arefback
 
 ********************************************************************************
 * Step 3 (5): Include Previous Nationality and Country Born In + Country of    *
@@ -150,7 +153,7 @@ replace ancestry3 = temp2 if (ancestry3 == 3 & ///
     (!missing(temp2) & temp2 > 3)) | missing(ancestry3)
 replace ancestry5 = temp3 if (ancestry5 == 3 & ///
     (!missing(temp3) & temp3 > 3)) | missing(ancestry5)
-keep pid syear ancestry*
+keep pid syear ancestry* arefback
 
 ********************************************************************************
 * Step 4: Information provided by Household Head on the citizenships of        *
@@ -195,7 +198,7 @@ foreach var of varlist nat cborn {
 }
 
 * save the dataset to open bioparen
-keep pid syear ancestry*
+keep pid syear ancestry* arefback
 tempfile temp
 save `temp'
 
@@ -243,7 +246,7 @@ replace ancestry8 = forigin if missing(ancestry8) & ///
 
 * we should try to correct for Eastern Europe (code 222) afterwards
 
-keep pid syear ?nr ancestry? ?native
+keep pid syear ?nr ancestry? ?native arefback
 
 foreach g in `gender' {
     preserve
@@ -256,7 +259,7 @@ foreach g in `gender' {
 
     * merge information from the long key dataset
     mer 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
-        keepus(syear corigin migback) keep(match) nogen
+        keepus(syear corigin migback immiyear) keep(match) nogen
 
     * if the parent has a direct migration background copy the recorded
     *   country of origin as the country of ancestry 
@@ -264,6 +267,11 @@ foreach g in `gender' {
         migback == 2 & corigin > 0 
     * prepare a dummy if the parent is second-generation itself
     g `g'secgen = (migback == 3) if !missing(migback)
+    * prepare a variable that indicates parent's immigration year
+    g `g'immiyear = immiyear if !missing(immiyear) & immiyear > 0
+    * replace second-generation and native dummies if immiyear is not missing
+    replace `g'native = 0 if !missing(`g'immiyear)
+    replace `g'secgen = 0 if !missing(`g'immiyear)
 
     * First Step : variable pgnation in pgen dataset
     mer 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
@@ -355,7 +363,7 @@ foreach g in `gender' {
 
     duplicates drop pid, force
     rename (pid) (`g'nr)
-    keep `g'nr `g'anclink `g'secgen
+    keep `g'nr `g'anclink `g'secgen `g'immiyear
     tempfile `g'postbio
     save ``g'postbio'
     restore
@@ -408,17 +416,19 @@ label language EN
 label copy pgnation_EN ancestry_EN
 label values ancestry ancestry_EN
 
-label variable ancestry "Country of Ancestry"
-label variable fnative  "Father is German"
-label variable mnative  "Mother is German"
-label variable fsecgen  "Father is Second-Generation Immigrant"
-label variable msecgen  "Mother is Second Generation Immigrant"
+label variable ancestry  "Country of Ancestry"
+label variable fnative   "Father is German"
+label variable mnative   "Mother is German"
+label variable fsecgen   "Father is Second-Generation Immigrant"
+label variable msecgen   "Mother is Second Generation Immigrant"
+label variable fimmiyear "Last Year of Immigration to Germnay of Father"
+label variable mimmiyear "Last year of Immigration to Germany of Mother"
 
 label language DE
 
 * There are some intra-regions like Kurdistan, Chechnya
-order pid syear ancestry ?native ?secgen
-keep  pid syear ancestry ?native ?secgen
+order pid syear ancestry arefback ?native ?secgen ?immiyear
+keep  pid syear ancestry arefback ?native ?secgen ?immiyear
 drop if missing(ancestry)
 
 label data "SOEP v34 Panel of Second-Generation Individuals with Ancestry"

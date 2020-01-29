@@ -37,11 +37,7 @@ merge 1:m hid using "${SOEP_PATH}/ppathl.dta",                               ///
     keepus(                                                                  ///
         pid syear hid cid parid     /* unique identifiers and survey year */ ///
         sex gebjahr gebmonat piyear /* gender and variables for age       */ ///
-        arefback                    /* migration and refugee background   */ ///
      ) keep(match) nogen
-
-* clean missing values in refugee experience and partner identifier
-mvdecode arefback parid, mv(-8/-1 = .)
 
 * add information of indirect ancestry for whom in the household is
 *   second-generation, later we will record it also for direct migrants
@@ -169,7 +165,7 @@ g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
     3312, 3334, 4213, 4214, 4312) | inlist(pgnace, 65, 66, 67, 70))
 
 * keep just the generated variables and the refugee background
-drop pg* sex gebmonat piyear arefback
+drop pg* sex gebmonat piyear
 
 * open the individual long dataset to retrieve some variables
 merge 1:1 pid syear using "${SOEP_PATH}/pl.dta",                     ///
@@ -431,7 +427,6 @@ replace freligion = 7 if freli == 6
 * initialise the college and high school degree dummies
 g fcollege = (fsedu == 4) if !missing(fsedu)
 g fhsdegree = (fcollege == 1 | fsedu == 3) if !missing(fsedu)
-drop fsedu freli
 
 preserve
 * keep just the parents only present in the biographical dataset
@@ -447,11 +442,11 @@ drop if missing(fnr)
 duplicates drop fnr, force
 rename fnr pid
 
-merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(immiyear syear) keep(match) nogen
+merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(syear) keep(match) nogen
 merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", keepus(pgisced97 pgpsbil) keep(match) nogen
 
 * cleanup missing flags
-mvdecode immiyear pgisced97 pgpsbil, mv(-8/-1 = .)
+mvdecode pgisced97 pgpsbil, mv(-8/-1 = .)
 
 * find the highest level of education achieved and save
 bys pid : egen maxyear1 = max(syear) if !missing(pgisced97)
@@ -516,13 +511,27 @@ restore
 
 merge 1:1 fnr using `migspell_exit', keep(master match) nogen
 append using `fnopid'
+
 merge 1:m pid using `temp', keep(using match) nogen
 
-* TODO: clean the mess and finish here
-* add the exit, compute the length of stay from immiyear and ydeath
-* problem, we know just the last immigration year so we cannot quanitfy 
-* precisely the length of stay per survey year
-* br pid syear immiyear migback if immiyear > syear & !missing(immiyear)
+sort pid syear
+bys pid : egen maxyear = max(syear)
+bys pid : egen minyear = min(syear)
+replace lastyear = maxyear if missing(lastyear)
+replace lastyear = fydeath if fydeath < lastyear
+replace addyears = 0 if missing(addyears)
+bys pid : g counter1 = syear - minyear
+bys pid : g counter2 = _n
+g styear  = cond(lastyear <= minyear, lastyear - fimmiyear, minyear - fimmiyear)
+g aux = counter2 if lastyear == syear | (syear == minyear & lastyear <= minyear)
+bys pid : replace aux = counter2 if missing(aux) & (lastyear[_n] < syear[_n] & lastyear[_n-1] > syear[_n-1])
+bys pid : egen pointer = total(aux)
+
+* search by pid if there is a year where lastyear == syear
+* if not and not also the other option then  pointer == 1
+* if pid == 576203 | pid == 810606 manual correction unbalanced panel
+g fstay = addyears + styear + counter1
+bys pid : replace fstay = fstay[pointer] if syear > lastyear | (!missing(pointer) & (syear == minyear & lastyear <= minyear))
 
 * compute
 save `temp', replace
@@ -552,13 +561,11 @@ foreach i in `stubvar' {
 preserve
 * temporary save the variables we want to keep from the partner
 keep pid syear age ancestry ?native ?secgen female employed selfemp ///
-    yeduc college hsdegree etecon finjob egp ///
-    arefback religion foreignid langspoken
+    yeduc college hsdegree etecon finjob egp religion foreignid langspoken
 rename (age ancestry ?native ?secgen female employed selfemp yeduc ///
     college hsdegree etecon finjob egp) (age_s ancestry_s ?native_s /// 
     ?secgen_s female_s employed_s selfemp_s yeduc_s college_s /// 
-    hsdegree_s etecon_s finjob_s egp_s ///
-    arefback_s religion_s foreignid_s langspoken_s)
+    hsdegree_s etecon_s finjob_s egp_s religion_s foreignid_s langspoken_s)
 tempfile partners
 save `partners'
 restore
