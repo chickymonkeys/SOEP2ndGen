@@ -174,6 +174,7 @@ if ${RUN_TESTS} {
 do "${SRC_PATH}/2ndgen/2ndgen.do"
 
 * create the households in analysis through household head
+do "${SRC_PATH}/2ndgen/hh2gen.do"
 
 ********************************************************************************
 * Closing Commands                                                             *

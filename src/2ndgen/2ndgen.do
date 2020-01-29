@@ -244,13 +244,10 @@ replace ancestry8 = forigin if missing(ancestry8) & ///
     morigin > 1 & morigin != 7 & morigin != 8 & morigin != 9 & ///
     morigin != 98 & morigin != 777 & morigin != 999
 
-* we should try to correct for Eastern Europe (code 222) afterwards
-
 keep pid syear ?nr ancestry? ?native arefback
 
 foreach g in `gender' {
     preserve
-
     * only keep the keys for linkable parent in the SOEP
     rename (pid `g'nr) (kchild pid)
     keep if !missing(pid)
@@ -269,8 +266,7 @@ foreach g in `gender' {
     g `g'secgen = (migback == 3) if !missing(migback)
     * prepare a variable that indicates parent's immigration year
     g `g'immiyear = immiyear if !missing(immiyear) & immiyear > 0
-    * replace second-generation and native dummies if immiyear is not missing
-    replace `g'native = 0 if !missing(`g'immiyear)
+    * replace second-generation indicator if immiyear is not missing
     replace `g'secgen = 0 if !missing(`g'immiyear)
 
     * First Step : variable pgnation in pgen dataset
@@ -384,6 +380,10 @@ replace ancestry8 = manclink if (ancestry8 == 3 & ///
 replace ancestry8 = fanclink if (ancestry8 == 3 & ///
     !missing(fanclink) & fanclink > 3) | (ancestry8 == 222 & ///
     (!missing(fanclink) & fanclink != 222)) | missing(ancestry8)
+
+* correct native indicator if there is an immigration year
+replace fnative = 0 if !missing(fimmiyear)
+replace mnative = 0 if !missing(mimmiyear)
 
 * Start Merging of the different steps
 g ancestry = ancestry1

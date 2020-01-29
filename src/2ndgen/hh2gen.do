@@ -374,15 +374,6 @@ g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 *   the survey and self-reported information by the interviewed individuals.   *
 ********************************************************************************
 
-* steps from the aggregated dataset
-* get number of siblings in earlier househodls (maybe it is useful)
-* retrieve information about parents with and without link
-* merge back, including immigration year
-* save
-* use migspell for people available
-
-
-
 save "${DATA_PATH}/temp.dta", replace
 use "${DATA_PATH}/temp.dta", clear
 
@@ -406,202 +397,170 @@ restore
 
 * merge back the siblings information
 merge m:1 pid using `temp', keep(master match) nogen
+tempfile temp
 save `temp', replace
 
-*** try with fathers first ***
-u "${SOEP_PATH}/bioparen.dta", clear
-local varlist = "fybirth fnr fydeath freli fsedu fegp ffight"
-mvdecode `varlist', mv(-8/-1 = .)
-keep persnr `varlist'
-
-* create a religion categorical variable in line with the previous
-* we copy the label variable just later at things done
-g freligion = 1 if freli == 1
-replace freligion = 2 if freli == 2
-replace freligion = 3 if freli == 3
-replace freligion = 4 if freli == 7
-replace freligion = 5 if freli == 4
-replace freligion = 6 if freli == 5
-replace freligion = 7 if freli == 6
-
-* initialise the college and high school degree dummies
-g fcollege = (fsedu == 4) if !missing(fsedu)
-g fhsdegree = (fcollege == 1 | fsedu == 3) if !missing(fsedu)
-
-preserve
-* keep just the parents only present in the biographical dataset
-keep if missing(fnr)
-rename persnr pid
-tempfile fnopid
-save `fnopid', replace
-restore
-
-* drop not linkable parents
-drop if missing(fnr)
-* keep just the identifier for the parent 
-duplicates drop fnr, force
-rename fnr pid
-
-merge 1:m pid using "${SOEP_PATH}/ppathl.dta", keepus(syear) keep(match) nogen
-merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", keepus(pgisced97 pgpsbil) keep(match) nogen
-
-* cleanup missing flags
-mvdecode pgisced97 pgpsbil, mv(-8/-1 = .)
-
-* find the highest level of education achieved and save
-bys pid : egen maxyear1 = max(syear) if !missing(pgisced97)
-bys pid : egen maxyear2 = max(syear) if !missing(pgpsbil)
-g aux1 = pgisced97 if syear == maxyear1
-g aux2 = pgpsbil   if syear == maxyear2
-bys pid : egen aux3 = total(aux1)
-bys pid : egen aux4 = total(aux2)
-* compare the saved education level with the one in the biological dataset
-replace fcollege  = (inlist(aux3, 5, 6) | aux4 == 4) if missing(fcollege)
-replace fhsdegree = (fcollege == 1 | aux3 == 4 | aux4 == 3) if missing(fhsdegree)
-drop aux? maxyear? pgisced97 pgpsbil syear
-* all information recorded is supposed to be time-constant
-*   or the latest updated information at least
-duplicates drop pid, force
-rename (pid persnr) (fnr pid)
-
-preserve
-
-* do not append the people without parent identifier yet
-
-* calculate length of stay in Germany if still there and not dead
-* first use migspell and immiyear in ppathl when applies
-* to calculate the length of stay of not dead people and in the sample
-* then subtract the total length of stay from here using syear for the panel
-
-* use migspell to look into the migration history of individuals when
-*   available and calculate the years in Germany before the last arrival
-*   recorded in the variable immiyear of the tracking dataset
-u "${SOEP_PATH}/migspell.dta", clear
-* recode missing flags for the variables we are interested in
-mvdecode starty move nspells mignr, mv(-8/-1 = .)
-* copy the one year after the current record
-g yearafter = starty[_n+1]
-* calculate the difference between the starty and the consecutive move
-*   if the individual has moved in Germany from another country (n years)
-bys pid : g aux1 = yearafter - starty if move == 1
-* generate index of number of total moves
-g aux2 = nspells - 1
-* copy the information in aux1 if not the last move in Germany
-g aux3 = aux1 if aux2 != mignr 
-* calculate the total years of stay in Germany before settling
-bys pid : egen addyears = total(aux3)
-keep pid addyears
-duplicates drop pid, force
-
-* merge with the exit dataset to see whether some people are still alive
-*   but they have migrated from Germany to recover the ending year
-merge 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear)
-mvdecode yperg ylint, mv(-8/-1 = .)
-g lastyear = ylint if yperg == 5 & ylint != 0
-* assume that last year is the survey year if no ylint
-replace lastyear = syear if yperg == 5 & missing(lastyear) 
-* it is safe to keep one observation of the identifier to
-*   preserve the last available year before moving from Germany
-duplicates drop pid if _m == 2, force
-keep pid addyears lastyear
-rename pid fnr
-tempfile migspell_exit
-save `migspell_exit', replace
-restore
-
-merge 1:1 fnr using `migspell_exit', keep(master match) nogen
-append using `fnopid'
-
-merge 1:m pid using `temp', keep(using match) nogen
-
-sort pid syear
-bys pid : egen maxyear = max(syear)
-bys pid : egen minyear = min(syear)
-replace lastyear = maxyear if missing(lastyear)
-replace lastyear = fydeath if fydeath < lastyear
-replace addyears = 0 if missing(addyears)
-bys pid : g counter1 = syear - minyear
-bys pid : g counter2 = _n
-g styear  = cond(lastyear <= minyear, lastyear - fimmiyear, minyear - fimmiyear)
-g aux = counter2 if lastyear == syear | (syear == minyear & lastyear <= minyear)
-bys pid : replace aux = counter2 if missing(aux) & (lastyear[_n] < syear[_n] & lastyear[_n-1] > syear[_n-1])
-bys pid : egen pointer = total(aux)
-
-* search by pid if there is a year where lastyear == syear
-* if not and not also the other option then  pointer == 1
-* if pid == 576203 | pid == 810606 manual correction unbalanced panel
-g fstay = addyears + styear + counter1
-bys pid : replace fstay = fstay[pointer] if syear > lastyear | (!missing(pointer) & (syear == minyear & lastyear <= minyear))
-
-* compute
-save `temp', replace
 local stubvar = "f m"
 foreach i in `stubvar' {
+    * open the biographical dataset to save the parent's demographics
     u "${SOEP_PATH}/bioparen.dta", clear
-    keep `i'ybirth `i'nr `i'ydeath `i'reli `i'sedu `i'currloc `i'egp `i'fight
-    rename `i'nr pid
+    local varlist = "`i'ybirth `i'nr `i'ydeath `i'reli `i'sedu `i'egp `i'fight"
+    mvdecode `varlist', mv(-8/-1 = .)
+    keep persnr `varlist'
+    * create a religion categorical variable like the other
+    *   and copy the variable label just later
+    g `i'religion = 1 if `i'reli == 1
+    replace `i'religion = 2 if `i'reli == 2
+    replace `i'religion = 3 if `i'reli == 3
+    replace `i'religion = 4 if `i'reli == 7
+    replace `i'religion = 5 if `i'reli == 4
+    replace `i'religion = 6 if `i'reli == 5
+    replace `i'religion = 7 if `i'reli == 6
+    * initialise the parent's college and high school degree indicators
+    g `i'college = (`i'sedu == 4) if !missing(`i'sedu)
+    g `i'hsdegree = (`i'college == 1 | `i'sedu == 3) if !missing(`i'sedu)
+
     preserve
-    drop if pid < 0 | missing(pid)
+    * we save the not linkable parents in a separate tempfile
+    keep if missing(`i'nr)
+    rename persnr pid
     tempfile `i'nopid
     save ``i'nopid', replace
     restore
+
+    * drop the previously saved parents without the identifier
+    drop if missing(`i'nr)
+    * keep just the parent identifier
+    duplicates drop `i'nr, force
+    rename `i'nr pid
+
+    * retrieve education if parent is in the survey
     merge 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
-        keepus(immiyear syear) keep(master match) nogen
+        keepus(syear) keep(match) nogen
+    merge 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
+        keepus(pgisced97 pgpsbil) keep(match) nogen
+    * cleanup missing flags
+    mvdecode pgisced97 pgpsbil, mv(-8/-1 = .)
+
+    * find the highest level of education achieved and save it
+    bys pid : egen maxyear1 = max(syear) if !missing(pgisced97)
+    bys pid : egen maxyear2 = max(syear) if !missing(pgpsbil)
+    g aux1 = pgisced97 if syear == maxyear1
+    g aux2 = pgpsbil   if syear == maxyear2
+    bys pid : egen aux3 = total(aux1)
+    bys pid : egen aux4 = total(aux2)
+    * compare the last education level with the one in the biological dataset
+    replace `i'college  = ///
+        (inlist(aux3, 5, 6) | aux4 == 4) if missing(`i'college)
+    replace `i'hsdegree = ///
+        (`i'college == 1 | aux3 == 4 | aux4 == 3) if missing(`i'hsdegree)
+    drop aux? maxyear? pgisced97 pgpsbil syear
+    * all information recorded is supposed to be time-constant
+    *   or the latest updated information at least, so we can drop duplicates
+    duplicates drop pid, force
+    rename (pid persnr) (`i'nr pid)
+
+    preserve
+    * analyse the migration spell data containing the migration history of a
+    *   subset of individuals to find out whether the parent has been in
+    *   Germany before the recorded immigration year in the tracking dataset
+    u "${SOEP_PATH}/migspell.dta", clear
+    * recode missing flags for the variables of interest
+    mvdecode starty move nspells mignr, mv(-8/-1 = .)
+    * copy the year after the current line, overlapping does not matter
+    g yearafter = starty[_n+1]
+    * calculate the difference between the starting year of the spell and
+    *   the consecutive move if parent has move to Germany from another country
+    *   (in n years format)
+    bys pid : g aux1 = yearafter - starty if move == 1
+    * generate index of number of total moves
+    g aux2 = nspells - 1
+    * shift the number of years in aux1 if it is not the last move to Germany
+    g aux3 = aux1 if aux2 != mignr
+    * calculate the total years of stay in Germany before settling
+    bys pid : egen addyears = total(aux3)
+    keep pid addyears
+    duplicates drop pid, force
+
+    * merge with the exit dataset to see whether some people are still alive
+    *   but they have migrated from Germany to recover the last spell year
+    merge 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear)
+    mvdecode yperg ylint, mv(-8/-1 = .)
+    g lastyear = ylint if yperg == 5 & ylint != 0
+    * assume that last year is the survey year if no ylint
+    replace lastyear = syear if yperg == 5 & missing(lastyear) 
+    * it is safe to keep one observation of the identifier to
+    *   preserve the last available year before moving from Germany
+    duplicates drop pid if _m == 2, force
+    keep pid addyears lastyear
+    rename pid `i'nr
+    tempfile migspell_exit
+    save `migspell_exit', replace
+    restore
+
+    * look for matches with the created migration and exit history dataset
+    merge 1:1 `i'nr using `migspell_exit', keep(master match) nogen
+    * append back the parents not in the survey with biological information
+    append using ``i'nopid'
+
+    * merge back to the big dataset using children identifiers
+    merge 1:m pid using `temp', keep(using match) nogen
+
+    * calculate approximative parent age using year of birth,
+    *   year of death (if any) and current survey year
+    g `i'age = syear - `i'ybirth ///
+        if (!missing(`i'ydeath) & syear <= `i'ydeath) | missing(`i'ydeath)
+
+    *********************************************************************
+    * parent length of stay calculation when the parent is an immigrant *
+    *********************************************************************
+    sort pid syear
+    * find first and last year in the survey for the children
+    bys pid : egen maxyear = max(syear)
+    bys pid : egen minyear = min(syear)
+    * if there is no ending year from the migration spell data, the last year
+    *   is simply given by the survey year of the last wave of the children
+    replace lastyear = maxyear if missing(lastyear)
+    * if the parent is dead before the last year, replace the date
+    replace lastyear = `i'ydeath if `i'ydeath < lastyear
+    * replace missing additional years to zero for the summation
+    replace addyears = 0 if missing(addyears)
+    * counter starting from zero that increases the length of stay
+    bys pid : g counter1 = syear - minyear
+    * incremental counter for the presence in the survey
+    bys pid : g counter2 = _n
+    * starting length of stay in Germany, which is given by the difference 
+    *   between the year of exit/death and the immigration year if the former
+    *   happens to be before the first survey year of the children, otherwise
+    *   the difference between the first survey year and immigration year
+    g styear  = cond(lastyear <= minyear, ///
+        lastyear - `i'immiyear, minyear - `i'immiyear)
+    * create the pointer at which the counting of additional years of stay
+    *   should stop: a) save the array cell at which the survey year is the
+    *   year of exit/death or the first cell if the year of exit/death is
+    *   before the entrance of the children in the panel; b) check that the
+    *   pointer exists, otherwise check whether there is a jump in the panel;
+    *   c) copy the pointer for each survey year of the children.
+    g aux = counter2 ///
+        if lastyear == syear | (syear == minyear & lastyear <= minyear)
+    bys pid : replace aux = counter2 if missing(aux) & ///
+        (lastyear[_n] < syear[_n] & lastyear[_n-1] > syear[_n-1])
+    bys pid : egen pointer = total(aux)
+    * calculate length of stay = years before last migration to Germany +
+    *   + starting length of stay + additional years when children in survey
+    g `i'stay = addyears + styear + counter1
+    * stop counting at the pointed cell of the pid array
+    bys pid : replace `i'stay = `i'stay[pointer] if syear > lastyear | ///
+        (!missing(pointer) & (syear == minyear & lastyear <= minyear))
+
+    drop counter* pointer aux addyears lastyear styear minyear maxyear
+    
+    save `temp', replace
 }
+
 
 ********************************************************************************
 * Step 7: Reverse all the information in one household row in order to merge   *
 *   the current household informaiton given the second-generation head of      *
 *   household from the aggregated datasets. (we keep just the partner)         *
 ********************************************************************************
-
-* TODO: I put the corigin and migback at the beginning, so you already
-* have them at this point, remember to remove them for the head of household
-
-preserve
-* temporary save the variables we want to keep from the partner
-keep pid syear age ancestry ?native ?secgen female employed selfemp ///
-    yeduc college hsdegree etecon finjob egp religion foreignid langspoken
-rename (age ancestry ?native ?secgen female employed selfemp yeduc ///
-    college hsdegree etecon finjob egp) (age_s ancestry_s ?native_s /// 
-    ?secgen_s female_s employed_s selfemp_s yeduc_s college_s /// 
-    hsdegree_s etecon_s finjob_s egp_s religion_s foreignid_s langspoken_s)
-tempfile partners
-save `partners'
-restore
-
-* keep only the head of household
-keep if stell_h == 0
-* rename partner id for the merge
-rename (pid parid) (pid_h pid)
-* replace identifier when there is no partner
-replace pid = . if pid == -2
-drop stell_h
-
-preserve
-* save households with no partners
-keep if missing(pid)
-rename  (pid_h pid) (pid parid)
-tempfile nopartners
-save `nopartners'
-restore
-
-* we keep only heads of household with the partner
-drop if missing(pid)
-
-* retrieve country of origin and migration background of the partner
-merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
-    keepus(corigin migback immiyear) keep(match) nogen
-* include all the demographics for the spouse
-merge 1:1 pid syear using `partners', keep(match) nogen
-
-* integrate ancestry when the spouse is not a second-generation
-replace ancestry_s = corigin if migback != 3
-rename (migback pid_h pid) (migback_s pid parid)
-
-* reintegrate households where there is not a partner
-append using `nopartners'
-
-keep hid pid syear cid gebjahr parid ancestry* ?native* ?secgen* age* ///
-    female* married* employed* selfemp* civserv* ineduc* retired* yeduc* ///
-    hsdegree* voceduc* etecon* egp* finjob* hsize nchild migback_s
