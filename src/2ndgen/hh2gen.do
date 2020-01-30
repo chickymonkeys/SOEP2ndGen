@@ -558,9 +558,75 @@ foreach i in `stubvar' {
     save `temp', replace
 }
 
+* generate a dummy if the parent is alive
+g falive = (!missing(fage))
+g malive = (!missing(mage))
+
+order pid syear *hid cid parid ?nr *age gebjahr female ancestry arefback ///
+    ineduc civserv selfemp employed retired *religion *college *hsdegree ///
+    yeduc voceduc finjob etecon married foreignid langspoken stell_h ///
+    nchild ?stay *hsize psamehh *hnetinc *hnetwth *hnetincavg *hnetwthavg ///
+    nsibs ?alive ?native ?secgen *egp ?fight
+keep pid syear *hid cid parid ?nr *age gebjahr female ancestry arefback ///
+    ineduc civserv selfemp employed retired *religion *college *hsdegree ///
+    yeduc voceduc finjob etecon married foreignid langspoken stell_h ///
+    nchild ?stay *hsize psamehh *hnetinc *hnetwth *hnetincavg *hnetwthavg ///
+    nsibs ?alive ?native ?secgen *egp ?fight
 
 ********************************************************************************
 * Step 7: Reverse all the information in one household row in order to merge   *
 *   the current household informaiton given the second-generation head of      *
 *   household from the aggregated datasets. (we keep just the partner)         *
 ********************************************************************************
+
+* TODO: I put the corigin and migback at the beginning, so you already
+* have them at this point, remember to remove them for the head of household
+
+preserve
+* temporary save the variables we want to keep from the partner
+rename (*age gebjahr female ancestry arefback ineduc civserv selfemp ///
+    employed retired *religion *college *hsdegree yeduc voceduc finjob ///
+    etecon foreignid langspoken ?stay ?hsize psamehh ?hnetinc ?hnetwth ///
+    ?hnetincavg nsibs ?alive ?native ?secgen *egp ?fight) (*age_s gebjahr_s ///
+    female_s ancestry_s arefback_s ineduc_s civserv_s selfemp_s ///
+    employed_s retired_s *religion_s *college_s *hsdegree_s yeduc_s ///
+    voceduc_s finjob_s etecon_s foreignid_s langspoken_s ?stay_s ?hsize_s ///
+    psamehh_s ?hnetinc_s ?hnetwth_s ?hnetincavg_s nsibs_s ?alive_s ///
+    ?native_s ?secgen_s *egp_s ?fight_s)
+keep pid syear *_s
+tempfile partners
+save `partners'
+restore
+
+* keep only the head of household
+keep if stell_h == 0
+* replace partner identifier when there is no partner
+mvdecode parid, mv(-8/-1 = .)
+drop stell_h
+
+preserve
+* save households with no partners
+keep if missing(parid)
+tempfile nopartners
+save `nopartners'
+restore
+
+* rename partner id for the merge
+rename (pid parid) (pid_h pid)
+* we keep only heads of household with the partner
+drop if missing(pid)
+
+* retrieve country of origin and migration background for the partner
+merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
+    keepus(corigin migback immiyear) keep(match) nogen
+* include all the demographics for the spouse from the big dataset
+merge 1:1 pid syear using `partners', keep(match) nogen
+
+* integrate ancestry when the spouse is not a second-generation
+replace ancestry_s = corigin if migback != 3
+rename (migback pid_h pid) (migback_s pid parid)
+
+* reintegrate households where there is not a partner
+append using `nopartners'
+
+sort pid syear
