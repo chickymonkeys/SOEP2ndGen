@@ -340,7 +340,7 @@ foreach i in `stubvar' {
 restore
 
 rename pid persnr
-* retrieve parents' identifiers from biological information
+* retrieve parents' identifiers from biographical information
 merge m:1 persnr using "${SOEP_PATH}/bioparen.dta", ///
     keepus(fnr mnr) keep(master match) nogen
 mvdecode ?nr, mv(-8/-1 = .)
@@ -369,13 +369,10 @@ rename persnr pid
 g psamehh = (fhid == mhid) if !missing(fhid) & !missing(mhid)
 
 ********************************************************************************
-* Step 6: Retrieve the remaining information about parents from the biological *
+* Step 6: Retrieve the remaining information about parents from the biographical *
 *   dataset, where information about parents is generated from parents within  *
 *   the survey and self-reported information by the interviewed individuals.   *
 ********************************************************************************
-
-save "${DATA_PATH}/temp.dta", replace
-use "${DATA_PATH}/temp.dta", clear
 
 preserve
 * retrieve the number of siblings for each individual 
@@ -449,7 +446,7 @@ foreach i in `stubvar' {
     g aux2 = pgpsbil   if syear == maxyear2
     bys pid : egen aux3 = total(aux1)
     bys pid : egen aux4 = total(aux2)
-    * compare the last education level with the one in the biological dataset
+    * compare the last education level with the one in the biographical dataset
     replace `i'college  = ///
         (inlist(aux3, 5, 6) | aux4 == 4) if missing(`i'college)
     replace `i'hsdegree = ///
@@ -500,7 +497,7 @@ foreach i in `stubvar' {
 
     * look for matches with the created migration and exit history dataset
     merge 1:1 `i'nr using `migspell_exit', keep(master match) nogen
-    * append back the parents not in the survey with biological information
+    * append back the parents not in the survey with biographical information
     append using ``i'nopid'
 
     * merge back to the big dataset using children identifiers
@@ -623,10 +620,84 @@ merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
 merge 1:1 pid syear using `partners', keep(match) nogen
 
 * integrate ancestry when the spouse is not a second-generation
+mvdecode immiyear corigin migback 
 replace ancestry_s = corigin if migback != 3
-rename (migback pid_h pid) (migback_s pid parid)
+rename (migback immiyear pid_h pid) (migback_s immiyear_s pid parid)
 
 * reintegrate households where there is not a partner
 append using `nopartners'
 
 sort pid syear
+
+********************************************************************************
+* Step 8: Obtain the key household level data of debt, income and wealth.      *
+********************************************************************************
+
+* what if we try to look at the intergenerational transmission of debt?
+
+* obtain specific household weights
+merge 1:1 hid syear using "${SOEP_PATH}/hpathl.dta", ///
+    keepus(hhrf) keep(match) nogen
+* obtain household generated variables
+merge 1:1 hid syear using "${SOEP_PATH}/hgen.dta",          ///
+    keepus(                                                 ///
+        hgnuts1  /* NUTS1 Federal State Level            */ ///
+        hgowner  /* Houseowner or Tenant 5 Levels        */ ///
+        hghinc   /* Monthly Net Household Income         */ ///
+        hgi?hinc /* Monthly Net Household Income Imputed */ ///
+        hgrent   /* Amount of Rent minus Heating Costs   */ ///
+        hgsize   /* Size of Housing Unit in m2           */ ///
+    ) keep(master match) nogen
+
+* clean missing values, keep income imputed
+mvdecode hgnuts1 hghinc hgi?hinc hgowner hgrent hgsize, mv(-8/-1 = .)
+* house owner or tenant dummies
+g owner  = (hgowner == 1) if !missing(hgowner)
+g tenant = (hgowner != 1) if !missing(hgowner)
+
+merge 1:1 hid syear using "${SOEP_PATH}/hwealth.dta",    ///
+    keepus(                                              ///
+        p100h0 /* HH Prop. Prim. Resid. Filter Yes/No */ ///
+        p010h? /* HH Prop. Prim. Resid. Mkt. Value    */ ///
+        p001h? /* HH Prop. Prim. Resid. Debts         */ ///
+        e100h0 /* HH Other Real Estate Filter Yes/No  */ ///
+        e010h? /* HH Other Real Estate Market Value   */ ///
+        e001h? /* HH Other Real Estate Debts          */ ///
+        w011h? /* HH Net Overall Wealth               */ ///
+        w010h? /* HH Gross Overall Wealth             */ ///
+    ) keep(master match) nogen
+
+* hl/hlf0085_h mortgage, interest previous year until 1994?
+merge 1:1 hid syear using "${SOEP_PATH}/hl.dta",                             ///
+    keepus(                                                                  ///
+        hlf0087_h /* HH Still Owes Money on Loan/Mortgage Prim. Resid.    */ ///
+        hlf0088_h /* HH Monthly Mortgage and Interest Payment Prim. Resid */ ///
+        hlc0177   /* Loan, Mortgage or Interest Payments on Leased Prop.  */ ///
+        hlc0112_h /* Amount of Loan or Mortgage on Leased Property        */ ///
+        hlc0113   /* Loan Payoff for Big Expenses other than Real Estate  */ ///
+        hlc0114_h /* Monthly Repayment for Loans other than Real Estate   */ ///
+        hlc0126   /* Monthly Repayment of the previous in Germany         */ ///
+        hlc0128   /* Amount of Monthly Repayment in Germany               */ ///
+        hlc0127   /* Monthly Repayment of the previous Abroad             */ ///
+        hlc0129   /* Amount of Monthly Repayment Abroad                   */ ///
+    ) keep(master match) nogen
+
+g hasloan_pr = (owner == 1 & hlf0087_h == 1) if !missing(hlf0087_h)
+g mloan_pr = hlf0088_h
+mvdecode mloan_pr, mv(-8/-1 = .)
+
+g hasloan_ot = 1 if hlc0113 == 1
+g hasloan_ot = 0 if hlc0113 == 0
+g mloan_ot = hlc0114_h
+mvdecode mloan_ot, mv(-8/-1 = .)
+
+g mloans 
+
+* hlc0177 is crap in our dataset, we have poor information
+* same for monthly repayments in or outside Germany
+drop hlf* hlc*
+
+********************************************************************************
+
+compress
+save "${DATA_PATH}/hh2genv34soep.dta", replace
