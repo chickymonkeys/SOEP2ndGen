@@ -26,7 +26,7 @@ set more off
 set matsize 11000
 
 * for Stata in Linux
-set max_memory 4g
+set max_memory 6g
 
 ********************************************************************************
 * Utility Flags Definition                                                     *
@@ -174,6 +174,10 @@ if ${RUN_TESTS} {
 do "${SRC_PATH}/2ndgen/2ndgen.do"
 
 * create the households in analysis through household head
+do "${SRC_PATH}/2ndgen/hh2gen.do"
+
+* split dataset in pieces I can merge
+do "${SRC_PATH}/2ndgen/splits.do"
 
 ********************************************************************************
 * Closing Commands                                                             *
