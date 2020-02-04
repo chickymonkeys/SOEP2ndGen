@@ -176,6 +176,9 @@ do "${SRC_PATH}/2ndgen/2ndgen.do"
 * create the households in analysis through household head
 do "${SRC_PATH}/2ndgen/hh2gen.do"
 
+* split dataset in pieces I can merge
+do "${SRC_PATH}/2ndgen/splits.do"
+
 ********************************************************************************
 * Closing Commands                                                             *
 ********************************************************************************

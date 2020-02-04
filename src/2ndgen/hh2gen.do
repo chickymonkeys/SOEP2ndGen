@@ -583,13 +583,13 @@ preserve
 * temporary save the variables we want to keep from the partner
 rename (*age gebjahr female ancestry arefback ineduc civserv selfemp ///
     employed retired *religion *college *hsdegree yeduc voceduc finjob ///
-    etecon foreignid langspoken ?stay ?hsize psamehh ?hnetinc ?hnetwth ///
-    ?hnetincavg nsibs ?alive ?native ?secgen *egp ?fight) (*age_s gebjahr_s ///
-    female_s ancestry_s arefback_s ineduc_s civserv_s selfemp_s ///
-    employed_s retired_s *religion_s *college_s *hsdegree_s yeduc_s ///
-    voceduc_s finjob_s etecon_s foreignid_s langspoken_s ?stay_s ?hsize_s ///
-    psamehh_s ?hnetinc_s ?hnetwth_s ?hnetincavg_s nsibs_s ?alive_s ///
-    ?native_s ?secgen_s *egp_s ?fight_s)
+    etecon foreignid langspoken ?hid ?nr ?stay ?hsize psamehh ?hnetinc ///
+    ?hnetwth ?hnetincavg ?hnetwthavg nsibs ?alive ?native ?secgen *egp ?fight) ///
+    (*age_s gebjahr_s female_s ancestry_s arefback_s ineduc_s civserv_s ///
+    selfemp_s employed_s retired_s *religion_s *college_s *hsdegree_s ///
+    yeduc_s voceduc_s finjob_s etecon_s foreignid_s langspoken_s ?hid_s ///
+    ?nr_s ?stay_s ?hsize_s psamehh_s ?hnetinc_s ?hnetwth_s ?hnetincavg_s ///
+    ?hnetwthavg_s nsibs_s ?alive_s ?native_s ?secgen_s *egp_s ?fight_s)
 keep pid syear *_s
 tempfile partners
 save `partners'
@@ -620,8 +620,8 @@ merge 1:1 pid syear using "${SOEP_PATH}/ppathl.dta", ///
 merge 1:1 pid syear using `partners', keep(match) nogen
 
 * integrate ancestry when the spouse is not a second-generation
-mvdecode immiyear corigin migback 
-replace ancestry_s = corigin if migback != 3
+mvdecode immiyear corigin migback, mv(-8/-1 = .)
+replace ancestry_s = corigin if migback == 2
 rename (migback immiyear pid_h pid) (migback_s immiyear_s pid parid)
 
 * reintegrate households where there is not a partner
@@ -687,17 +687,26 @@ g mloan_pr = hlf0088_h
 mvdecode mloan_pr, mv(-8/-1 = .)
 
 g hasloan_ot = 1 if hlc0113 == 1
-g hasloan_ot = 0 if hlc0113 == 0
+replace hasloan_ot = 0 if hlc0113 == 0
 g mloan_ot = hlc0114_h
 mvdecode mloan_ot, mv(-8/-1 = .)
 
-g mloans 
+g hasloans = (hasloan_pr == 1 | hasloan_ot == 1) ///
+    if !missing(hasloan_pr) | !missing(hasloan_ot)
+
+* find some consumer loans? where are they? 
+egen mloans = rowtotal(mloan_pr mloan_ot), missing
 
 * hlc0177 is crap in our dataset, we have poor information
 * same for monthly repayments in or outside Germany
 drop hlf* hlc*
 
 ********************************************************************************
+
+* I did my best at least (sigh)
+
+* little snipped for labelling in English
+do "${SRC_PATH}/2ndgen/hh2gen_labelling.do"
 
 compress
 save "${DATA_PATH}/hh2genv34soep.dta", replace
