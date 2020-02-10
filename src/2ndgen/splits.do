@@ -11,13 +11,13 @@ use "${DATA_PATH}/hh2genv34soep.dta", clear
 
 drop *_s
 preserve
-keep hid syear f*
+keep hid syear f* hhrf phrf
 drop female foreignid finjob
 save "${DATA_PATH}/hh2genv34soep_fathers.dta", replace
 restore
 
 preserve
-keep hid syear m*
+keep hid syear m* hhrf phrf
 drop married mloan*
 save "${DATA_PATH}/hh2genv34soep_mothers.dta", replace
 restore
@@ -35,16 +35,17 @@ drop `mvars' `fvars'
 save "${DATA_PATH}/hh2genv34soep_hh.dta", replace
 
 use "${DATA_PATH}/hh2genv34soep.dta", clear
-keep hid syear *_s
+keep hid syear *_s hhrf
 
 preserve
-keep hid syear f*_s
+keep hid syear f*_s hhrf phrf_s
 drop female_s foreignid finjob_s
 save "${DATA_PATH}/hh2genv34soep_fathers_s.dta", replace
 restore
 
 preserve
-keep hid syear m*_s
+keep hid syear m*_s hhrf phrf_s
+drop migback_s
 save "${DATA_PATH}/hh2genv34soep_mothers_s.dta", replace
 restore
 
@@ -52,6 +53,8 @@ unab fvars : f*_s
 local dropvars = "female_s foreignid_s finjob_s"
 local fvars : list fvars - dropvars
 unab mvars : m*_s
+local dropvars = "migback_s"
+local mvars : list mvars - dropvars
 drop `mvars' `fvars'
 
 save "${DATA_PATH}/hh2genv34soep_hp.dta", replace

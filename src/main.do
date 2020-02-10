@@ -142,6 +142,13 @@ adopath + "${SRC_PATH}/ado"
 capture ssc install grstyle
 capture ssc install palettes
 capture ssc install colrspace
+capture ssc install statplot
+
+* R built-in dependencies
+capture ssc install rsource
+
+* export stata document in LaTeX
+ssc install texdoc
 
 ********************************************************************************
 * Log Opening and Settings                                                     *
@@ -178,6 +185,12 @@ do "${SRC_PATH}/2ndgen/hh2gen.do"
 
 * split dataset in pieces I can merge
 do "${SRC_PATH}/2ndgen/splits.do"
+
+********************************************************************************
+* Summary Statistics from the previously built dataset                         *
+********************************************************************************
+
+do "${SRC_PATH}/desc/summary.do"
 
 ********************************************************************************
 * Closing Commands                                                             *

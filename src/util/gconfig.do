@@ -21,7 +21,7 @@ program grstyle_set_nticks
 end
 
 * basic scheme
-grstyle set plain, grid horizontal compact
+grstyle set plain, horizontal grid compact
 
 * general color set as lean (monochrome)
 grstyle set color lean

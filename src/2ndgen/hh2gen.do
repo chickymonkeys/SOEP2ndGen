@@ -37,6 +37,7 @@ merge 1:m hid using "${SOEP_PATH}/ppathl.dta",                               ///
     keepus(                                                                  ///
         pid syear hid cid parid     /* unique identifiers and survey year */ ///
         sex gebjahr gebmonat piyear /* gender and variables for age       */ ///
+        phrf                        /* individual weighting factor        */ ///
      ) keep(match) nogen
 
 * add information of indirect ancestry for whom in the household is
@@ -111,7 +112,7 @@ g married = (pgfamstd == 1 | pgfamstd > 5) ///
 g employed = (pgemplst != 5) ///
     if !missing(pgemplst) & !inlist(pgemplst, -1, -3)
 * self-employed indicator variable
-g selfemp = inrange(pgstib, 410, 433) ///
+g selfemp = inrange(pgstib, 410, 433) & !employed ///
     if !missing(pgstib) & !inlist(pgstib, -1, -3)
 * civil servant indicator variable 
 g civserv = inrange(pgstib, 550, 640) ///
@@ -162,7 +163,8 @@ g egp = pgegp88 if !missing(pgegp88) & pgegp88 > 0
 g finjob = (inlist(pgisco88, 1231, 2410, 2411, 2419, 2441, 3429, 4121, ///
     4122, 4214, 4215) | inrange(pgisco88, 3410, 3413) | inrange(pgisco88, ///
     3419, 3421) | inlist(pgisco08, 1211, 1346, 2631, 3311, ///
-    3312, 3334, 4213, 4214, 4312) | inlist(pgnace, 65, 66, 67, 70))
+    3312, 3334, 4213, 4214, 4312) | inlist(pgnace, 65, 66, 67, 70)) ///
+    if (!missing(pgisco88) | !missing(pgnace))
 
 * keep just the generated variables and the refugee background
 drop pg* sex gebmonat piyear
@@ -239,7 +241,7 @@ keep if aux == 1
 drop flag_h aux
 
 * exclude if household head is underage, still in education or retired
-g flag_h = (stell_h == 0 & (ineduc == 1 | retired == 1))
+g flag_h = (stell_h == 0 & ((ineduc == 1 | retired == 1) | age < 18))
 bys hid syear : egen aux = total(flag_h)
 keep if aux == 0
 drop flag_h aux
@@ -563,12 +565,12 @@ order pid syear *hid cid parid ?nr *age gebjahr female ancestry arefback ///
     ineduc civserv selfemp employed retired *religion *college *hsdegree ///
     yeduc voceduc finjob etecon married foreignid langspoken stell_h ///
     nchild ?stay *hsize psamehh *hnetinc *hnetwth *hnetincavg *hnetwthavg ///
-    nsibs ?alive ?native ?secgen *egp ?fight
+    nsibs ?alive ?native ?secgen *egp ?fight phrf
 keep pid syear *hid cid parid ?nr *age gebjahr female ancestry arefback ///
     ineduc civserv selfemp employed retired *religion *college *hsdegree ///
     yeduc voceduc finjob etecon married foreignid langspoken stell_h ///
     nchild ?stay *hsize psamehh *hnetinc *hnetwth *hnetincavg *hnetwthavg ///
-    nsibs ?alive ?native ?secgen *egp ?fight
+    nsibs ?alive ?native ?secgen *egp ?fight phrf
 
 ********************************************************************************
 * Step 7: Reverse all the information in one household row in order to merge   *
@@ -576,20 +578,18 @@ keep pid syear *hid cid parid ?nr *age gebjahr female ancestry arefback ///
 *   household from the aggregated datasets. (we keep just the partner)         *
 ********************************************************************************
 
-* TODO: I put the corigin and migback at the beginning, so you already
-* have them at this point, remember to remove them for the head of household
-
 preserve
 * temporary save the variables we want to keep from the partner
 rename (*age gebjahr female ancestry arefback ineduc civserv selfemp ///
     employed retired *religion *college *hsdegree yeduc voceduc finjob ///
     etecon foreignid langspoken ?hid ?nr ?stay ?hsize psamehh ?hnetinc ///
-    ?hnetwth ?hnetincavg ?hnetwthavg nsibs ?alive ?native ?secgen *egp ?fight) ///
+    ?hnetwth ?hnetincavg ?hnetwthavg nsibs ?alive ?native ?secgen *egp ///
+    ?fight phrf) ///
     (*age_s gebjahr_s female_s ancestry_s arefback_s ineduc_s civserv_s ///
     selfemp_s employed_s retired_s *religion_s *college_s *hsdegree_s ///
     yeduc_s voceduc_s finjob_s etecon_s foreignid_s langspoken_s ?hid_s ///
     ?nr_s ?stay_s ?hsize_s psamehh_s ?hnetinc_s ?hnetwth_s ?hnetincavg_s ///
-    ?hnetwthavg_s nsibs_s ?alive_s ?native_s ?secgen_s *egp_s ?fight_s)
+    ?hnetwthavg_s nsibs_s ?alive_s ?native_s ?secgen_s *egp_s ?fight_s phrf_s)
 keep pid syear *_s
 tempfile partners
 save `partners'
@@ -623,6 +623,7 @@ merge 1:1 pid syear using `partners', keep(match) nogen
 mvdecode immiyear corigin migback, mv(-8/-1 = .)
 replace ancestry_s = corigin if migback == 2
 rename (migback immiyear pid_h pid) (migback_s immiyear_s pid parid)
+drop corigin
 
 * reintegrate households where there is not a partner
 append using `nopartners'
@@ -654,6 +655,7 @@ mvdecode hgnuts1 hghinc hgi?hinc hgowner hgrent hgsize, mv(-8/-1 = .)
 * house owner or tenant dummies
 g owner  = (hgowner == 1) if !missing(hgowner)
 g tenant = (hgowner != 1) if !missing(hgowner)
+drop hgowner
 
 merge 1:1 hid syear using "${SOEP_PATH}/hwealth.dta",    ///
     keepus(                                              ///
@@ -687,7 +689,7 @@ g mloan_pr = hlf0088_h
 mvdecode mloan_pr, mv(-8/-1 = .)
 
 g hasloan_ot = 1 if hlc0113 == 1
-replace hasloan_ot = 0 if hlc0113 == 0
+replace hasloan_ot = 0 if hlc0113 == 2
 g mloan_ot = hlc0114_h
 mvdecode mloan_ot, mv(-8/-1 = .)
 

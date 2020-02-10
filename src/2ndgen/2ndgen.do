@@ -403,6 +403,8 @@ replace ancestry = 22  if ancestry == 222
 replace ancestry = 117 if ancestry == 12
 * Merge Chechnya with Mother Russia
 replace ancestry = 32  if ancestry == 188
+* Merge Albania with Kosovo-Albania
+replace ancestry = 140 if ancestry == 75
 
 * correct for no nationality residuals eventually
 drop if ancestry == 98
