@@ -57,11 +57,16 @@ replace _ISO3N_ = 56 if corigin == 12
 replace cnames  = "Belgium" if _ISO3N_ == 56
 replace corigin = 117 if corigin == 12
 
+* Congo is not divided in the two countries : we assume Belgian Congo
+replace _ISO3N_ = 180 if _ISO3N_ == 178
+
 label drop corigin_EN corigin
 rename (_ISO3N_ corigin) (isocodes oldcode)
 
 * to use labmask we need to drop duplicates
 duplicates drop isocodes, force
+* trim the country names
+replace cnames = strtrim(cnames)
 * generate label values from the generated isocodes
 labmask isocodes, values(cnames)
 * non-interesting codes are dropped
