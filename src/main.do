@@ -31,8 +31,9 @@ set max_memory 6g
 ********************************************************************************
 * Utility Flags Definition                                                     *
 ********************************************************************************
-gl RUN_TESTS  = 0 /* = 1 when tests are (the only) allowed to be run */
-gl MAKE_DIR   = 0 /* = 1 when need to create workspace folders */
+gl RUN_TESTS  = 0 /* = 1 when tests are (the only) allowed to be run   */
+gl MAKE_DIR   = 0 /* = 1 when need to create workspace folders         */
+gl ISO_CODES  = 1 /* = 1 when need to generate ISO codes table         */
 gl WORK_LOCAL = 1 /* = 1 when we want to work locally with the dataset */
 
 ********************************************************************************
@@ -138,6 +139,11 @@ adopath + "${SRC_PATH}/ado"
 * Dependencies                                                                 *
 ********************************************************************************
 
+* general utilities
+capture ssc install estout
+capture ssc install labutil
+capture ssc install elabel
+
 * graph dependencies
 capture ssc install grstyle
 capture ssc install palettes
@@ -163,6 +169,11 @@ capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 
 * run the graph utility .do file to set up the graph styles
 qui do "${UTIL_PATH}/gconfig.do"
+
+* run the script to create the table of ISO-3166 Numeric Codes
+if ${ISO_CODES} {
+    do "${UTIL_PATH}/isocodes.do"
+}
 
 ********************************************************************************
 * Run Test .do Files                                                           *
