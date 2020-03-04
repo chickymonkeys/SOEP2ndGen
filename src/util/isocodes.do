@@ -74,6 +74,5 @@ drop if missing(isocodes)
 * oldcode is for the merging
 keep isocodes oldcode
 
-
 compress
 save "${DATA_PATH}/soep_isocodes.dta", replace

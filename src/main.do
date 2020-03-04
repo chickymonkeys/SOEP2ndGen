@@ -143,6 +143,7 @@ adopath + "${SRC_PATH}/ado"
 capture ssc install estout
 capture ssc install labutil
 capture ssc install elabel
+capture ssc install kountry
 
 * graph dependencies
 capture ssc install grstyle
