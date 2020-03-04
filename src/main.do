@@ -52,8 +52,9 @@ forvalues i = 1/`n' {
         mkdir "${``i''_PATH}", pub
     }
 }
+
 * create utility directory path
-gl UTIL_PATH = "${SRC_PATH}/util" 
+gl UTIL_PATH = "${SRC_PATH}/util"
 
 ********************************************************************************
 * Log Opening and Settings                                                     *
