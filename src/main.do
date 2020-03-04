@@ -1,15 +1,9 @@
 ********************************************************************************
 *                                                                              *
-* Title:     Does Culture Affect Households' Borrowing Choices?                *
+* Title:     SOEP Second-Genration Immigrants Identification Script            *
 * Author:    Alessandro Pizzigolotto (NHH)                                     *
 * Language:  Stata (sigh)                                                      *
 * Version:   0.1 (alpha)                                                       *
-*                                                                              *
-********************************************************************************
-********************************************************************************
-*                                                                              *
-* Filename: main.do                                                            *
-* Description: Workspace Settings for Stata Project                            *
 *                                                                              *
 ********************************************************************************
 
@@ -25,164 +19,60 @@ set more off
 * for older version of Stata
 set matsize 11000
 
-* for Stata in Linux
+* for Stata in my poor Linux
 set max_memory 6g
 
 ********************************************************************************
 * Utility Flags Definition                                                     *
 ********************************************************************************
-gl RUN_TESTS  = 0 /* = 1 when tests are (the only) allowed to be run   */
-gl MAKE_DIR   = 0 /* = 1 when need to create workspace folders         */
-gl ISO_CODES  = 1 /* = 1 when need to generate ISO codes table         */
-gl WORK_LOCAL = 1 /* = 1 when we want to work locally with the dataset */
+
+gl MAKE_DIR   = 1 /* = 1 when need to create workspace folders */
+gl ISO_CODES  = 1 /* = 1 when need to generate ISO codes table */
 
 ********************************************************************************
 * Environment Variables Definition                                             *
 ********************************************************************************
 
-* rule-of-thumb : pathnames do not finish with slash
-gl DIR_NAME = "DebtCulture"
-gl MEGA_DIR =  "Documents/Datasets/projects"
+* define the absolute PATHNAME to the workspace and SOEP Data
+gl DIR_NAME      = "SOEP2ndGen"
+gl BASE_PATH     = "/home/`c(username)'/Documents/Projects/${DIR_NAME}"
+gl SOEP_PATH     = "/run/media/stargate/Data/SOEP"
+gl SOEP_PATH_RAW = "${SOEP_PATH}/raw"
 
-if "`c(os)'" == "Windows" {
-    * define project parent folder location (common drive)
-    gl HOME_DIR = "D:/Projects"
-    
-    * define cloud folder location
-    gl MEGA_PATH = "E:/MEGA/${MEGA_DIR}"
-
-    if ${WORK_LOCAL} == 1 {
-        * just in desperate low connection cases
-        gl V_DRIVE = "E:/Data"
-    }
-
-    else {
-        * define virtual drive pathname (depending on network)
-        gl V_DRIVE = "M:/Data"
-    }
-
-}
-
-else if "`c(os)'" == "MacOSX" {
-    * define project parent folder location
-    gl HOME_DIR = "/Users/`c(username)'/Documents/Projects"
-
-    * define cloud folder location
-    gl MEGA_PATH = "/Users/`c(username)'/MEGA/${MEGA_DIR}"
-
-    if ${WORK_LOCAL} == 1 {
-        * just in desperate low connection cases
-        gl V_DRIVE = "/Users/`c(username)'/Documents/Data"
-    }
-
-    else {
-        * connect to VALUTA network drive through VPN
-        gl V_DRIVE = "/Volumes/s13903/Data"
+local base   = "${BASE_PATH}"
+local stubs  = "log src data"
+local gnames = "LOG SRC DATA"
+local n: word count `gnames'
+tokenize "`gnames'"
+forvalues i = 1/`n' {
+    gl ``i''_PATH = "`base'/`: word `i' of `stubs''"
+    * check if directory already exists
+    capture confirm file "${``i''_PATH}"
+    if _rc {
+        mkdir "${``i''_PATH}", pub
     }
 }
-
-else if "`c(os)'" == "Unix" {
-    * define project parent folder location
-    gl HOME_DIR = "/home/`c(username)'/Documents/Projects"
-
-    * define cloud folder location
-    gl MEGA_PATH = "/run/media/stargate/MEGA/${MEGA_DIR}"
-
-    if ${WORK_LOCAL} == 1 {
-        * just in desperate low connection cases
-        gl V_DRIVE = "/run/media/stargate/Data"
-    }
-
-    else {
-        * connect to VALUTA network drive through VPN
-        * TODO: when I manage to connect Manjaro 
-    }
-
-}
-
-else {
-    di "OS Not Identified."
-    exit, clear
-}
-
-* define base directory pathname
-gl BASE_PATH = "${HOME_DIR}/${DIR_NAME}"
-
-* check pathname
-capture cd "${BASE_PATH}"
-
-if _rc {
-    di "Pathnames are not defined properly. Exit."
-    exit, clear
-}
-
-* create workspace directories and pathnames
-qui do "${BASE_PATH}/src/util/workdir.do"
-
 * create utility directory path
 gl UTIL_PATH = "${SRC_PATH}/util" 
-
-* define dataset pathnames
-gl SOEP_PATH     = "${V_DRIVE}/SOEP"
-gl SOEP_PATH_RAW = "${V_DRIVE}/SOEP/raw"
-
-* create data directory path (outside git repository in the cloud)
-gl DATA_PATH = "${MEGA_PATH}/`=lower("${DIR_NAME}")'"
-if ${MAKE_DIR} {
-    !mkdir "${DATA_PATH}"
-}
-
-* add local source directory to adopath (in case of ad-hoc .ado)
-adopath + "${SRC_PATH}/ado"
-
-********************************************************************************
-* Dependencies                                                                 *
-********************************************************************************
-
-* general utilities
-capture ssc install estout
-capture ssc install labutil
-capture ssc install elabel
-capture ssc install kountry
-
-* graph dependencies
-capture ssc install grstyle
-capture ssc install palettes
-capture ssc install colrspace
-capture ssc install statplot
-
-* R built-in dependencies
-capture ssc install rsource
-
-* export stata document in LaTeX
-ssc install texdoc
 
 ********************************************************************************
 * Log Opening and Settings                                                     *
 ********************************************************************************
 
-* generate pseudo timestamp (TODO: .ado file for that, this is ugly)
+* generate pseudo timestamp (TODO: .ado program for that, this is ugly)
 gl T_STRING = subinstr("`c(current_date)'"+"_"+"`c(current_time)'", ":", "_", .)
 gl T_STRING = subinstr("${T_STRING}", " ", "_", .)
 
 * open log file
 capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 
-* run the graph utility .do file to set up the graph styles
-qui do "${UTIL_PATH}/gconfig.do"
+********************************************************************************
+* When the Flag is ON -> Run the Script to create ISO 3166-1 Numeric Table     *
+********************************************************************************
 
-* run the script to create the table of ISO-3166 Numeric Codes
 if ${ISO_CODES} {
+    capture ssc install kountry
     do "${UTIL_PATH}/isocodes.do"
-}
-
-********************************************************************************
-* Run Test .do Files                                                           *
-********************************************************************************
-
-if ${RUN_TESTS} {
-    do "${TEST_PATH}/tests.do"
-    exit, clear
 }
 
 ********************************************************************************
@@ -191,18 +81,6 @@ if ${RUN_TESTS} {
 
 * create the panel of second-generation individuals with country of ancestry
 do "${SRC_PATH}/2ndgen/2ndgen.do"
-
-* create the households in analysis through household head
-do "${SRC_PATH}/2ndgen/hh2gen.do"
-
-* split dataset in pieces I can merge
-do "${SRC_PATH}/2ndgen/splits.do"
-
-********************************************************************************
-* Summary Statistics from the previously built dataset                         *
-********************************************************************************
-
-do "${SRC_PATH}/desc/summary.do"
 
 ********************************************************************************
 * Closing Commands                                                             *

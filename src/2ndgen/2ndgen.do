@@ -27,6 +27,7 @@ capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 *   preserve the most recurrent information between the waves or, in case of   *
 *   equivalent frequency, the most recent information.                         *
 ********************************************************************************
+
 capture program drop sgenmode
 program define sgenmode
     version 10
@@ -395,6 +396,10 @@ forvalues i = 2/8 {
         (!missing(ancestry) & ancestry != 222)) | missing(ancestry)
 }
 
+********************************************************************************
+* Final Corrections, Nationality Approximation and Labeling Steps              *
+********************************************************************************
+
 * Final corrections Ex-Yugoslavia = Serbia, Eastern Europe = Poland
 replace ancestry = 165 if ancestry == 3
 replace ancestry = 22  if ancestry == 222
@@ -436,3 +441,9 @@ drop if missing(ancestry)
 label data "SOEP v34 Panel of Second-Generation Individuals with Ancestry"
 compress
 save "${DATA_PATH}/2ndgenindv34soep.dta", replace
+
+********************************************************************************
+* Closing Commands                                                             *
+********************************************************************************
+
+capture log close
