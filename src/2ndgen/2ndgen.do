@@ -438,9 +438,9 @@ order pid syear ancestry arefback ?native ?secgen ?immiyear
 keep  pid syear ancestry arefback ?native ?secgen ?immiyear
 drop if missing(ancestry)
 
-label data "SOEP v34 Panel of Second-Generation Individuals with Ancestry"
+label data "SOEP Panel of Second-Generation Individuals with Ancestry"
 compress
-save "${DATA_PATH}/2ndgenindv34soep.dta", replace
+save "${DATA_PATH}/SOEP2ndGen.dta", replace
 
 ********************************************************************************
 * Closing Commands                                                             *
