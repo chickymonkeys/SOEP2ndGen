@@ -10,7 +10,7 @@
 loc filename = "2ndgen"
 
 ********************************************************************************
-* Log Opening Programs, and Settings                                           *
+* Log Opening, Programs, and Settings                                          *
 ********************************************************************************
 
 * open log file
@@ -212,10 +212,8 @@ save `temp'
 *   of origin is not available.                                                *
 ********************************************************************************
 
-* //WIP We are trying to integrate length of stay and parent age
-
 u "${SOEP_PATH}/bioparen.dta", clear
-keep persnr bioyear ?nr ?nat ?origin ?ybirth ?ydeath
+keep persnr bioyear ?nr ?nat ?origin
 rename (persnr bioyear) (pid syear)
 
 * merge using the previously assembled dataset
@@ -248,54 +246,15 @@ replace ancestry8 = forigin if missing(ancestry8) & ///
     morigin > 1 & morigin != 7 & morigin != 8 & morigin != 9 & ///
     morigin != 98 & morigin != 777 & morigin != 999
 
-keep pid syear ?nr ancestry? ?native arefback ?ybirth ?ydeath
+keep pid syear ?nr ancestry? ?native arefback
 
 foreach g in `gender' {
-    
-    preserve
-    * analyse the migration spell data containing the migration history of a 
-    *   subset of 2013 Wave individuals, to find out whether the parent has been
-    *   in Germany before the recorded immigration year in the tracking dataset
-    u "${SOEP_PATH}/migspell.dta", clear
-    * recode missing flags for the variables of interest
-    mvdecode starty move nspells mignr, mv(-8/-1 = .)
-    * copy the year after the current line, overlapping does not matter
-    g yearafter = starty[_n+1]
-    * calculate the difference between the starting year of the spell and
-    *   the consecutive move if parent has move to Germany from another country
-    *   (in n years format)
-    bys pid : g aux1 = yearafter - starty if move == 1
-    * generate index of number of total moves
-    g aux2 = nspells - 1
-    * shift the number of years in aux1 if it is not the last move to Germany
-    g aux3 = aux1 if aux2 != mignr
-    * calculate the total years of stay in Germany before settling
-    bys pid : egen addyears = total(aux3)
-    keep pid addyears
-    duplicates drop pid, force
-    * merge with the exit dataset to see whether some people are still alive
-    *   but they have migrated from Germany to recover the last spell year
-    mer 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear)
-    mvdecode yperg ylint, mv(-8/-1 = .)
-    g lastyear = ylint if yperg == 5 & ylint != 0
-    * assume that last year is the survey year if no ylint
-    replace lastyear = syear if yperg == 5 & missing(lastyear) 
-    * it is safe to keep one observation of the identifier to
-    *   preserve the last available year before moving from Germany
-    duplicates drop pid if _m == 2, force
-    keep pid addyears lastyear
-    tempfile migspell_exit
-    save `migspell_exit', replace
-    restore
-
     preserve
     * only keep the keys for linkable parent in the SOEP
     rename (pid `g'nr) (kchild pid)
     keep if !missing(pid)
     duplicates drop pid, force
     keep pid
-    
-    mer 1:1 pid using `migspell_exit', keep(master match) nogen
 
     * merge information from the long key dataset
     mer 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
@@ -311,65 +270,6 @@ foreach g in `gender' {
     g `g'immiyear = immiyear if !missing(immiyear) & immiyear > 0
     * replace second-generation indicator if immiyear is not missing
     replace `g'secgen = 0 if !missing(`g'immiyear)
-
-    *********************************************************************
-    *              parent's age : missing if parent is dead             *
-    *********************************************************************
-
-    g `g'age = syear - `g'ybirth ///
-        if (!missing(`g'ydeath) & syear <= `g'ydeath) | missing(`g'ydeath)
-    * generate a dummy if the parent is alive
-    g `g'alive = (!missing(`g'age))
-
-    *********************************************************************
-    *                parent's length of stay calculation                *
-    *********************************************************************
-
-    * preventive sorting
-    sort pid syear
-    * find first and last year in the survey for the children
-    bys pid : egen maxyear = max(syear)
-    bys pid : egen minyear = min(syear)
-    * if there is no ending year from the migration spell data, the last year
-    *   is simply given by the survey year of the last wave of the children
-    replace lastyear = maxyear if missing(lastyear)
-    * if the parent is dead before the last year, replace the date
-    replace lastyear = `g'ydeath if `g'ydeath < lastyear
-    * replace missing additional years to zero for the summation
-    replace addyears = 0 if missing(addyears)
-    * counter starting from zero that increases the length of stay
-    bys pid : g counter1 = syear - minyear
-    * incremental counter for the presence in the survey
-    bys pid : g counter2 = _n
-    * starting length of stay in Germany, which is given by the difference 
-    *   between the year of exit/death and the immigration year if the former
-    *   happens to be before the first survey year of the children, otherwise
-    *   the difference between the first survey year and immigration year
-    g styear  = cond(lastyear <= minyear, ///
-        lastyear - `g'immiyear, minyear - `g'immiyear)
-    * create the pointer at which the counting of additional years of stay
-    *   should stop: a) save the array cell at which the survey year is the
-    *   year of exit/death or the first cell if the year of exit/death is
-    *   before the entrance of the children in the panel; b) check that the
-    *   pointer exists, otherwise check whether there is a jump in the panel;
-    *   c) copy the pointer for each survey year of the children.
-    g aux = counter2 ///
-        if lastyear == syear | (syear == minyear & lastyear <= minyear)
-    bys pid : replace aux = counter2 if missing(aux) & ///
-        (lastyear[_n] < syear[_n] & lastyear[_n-1] > syear[_n-1])
-    bys pid : egen pointer = total(aux)
-    * calculate length of stay = years before last migration to Germany +
-    *   + starting length of stay + additional years when children in survey
-    g `g'stay = addyears + styear + counter1
-    * stop counting at the pointed cell of the pid array
-    bys pid : replace `g'stay = `g'stay[pointer] if syear > lastyear | ///
-        (!missing(pointer) & (syear == minyear & lastyear <= minyear))
-
-    drop counter* pointer aux addyears lastyear styear minyear maxyear
-
-    *********************************************************************
-    *                linked parent's country of ancestry                *
-    *********************************************************************
 
     * First Step : variable pgnation in pgen dataset
     mer 1:1 pid syear using "${SOEP_PATH}/pgen.dta", ///
@@ -405,8 +305,9 @@ foreach g in `gender' {
     * Third-Fifth Step: Previous Nationality and Country Born In
     *   + Second Nationality from the big longitudinal personal dataset
     mer 1:1 pid syear using "${SOEP_PATH}/pl.dta", ///
-    keepus(plj0018 plf0011 plj0023) keep(master match) nogen
+    keepus(plj0018 plf0011_v1 plf0011_v2 plj0023) keep(master match) nogen
 
+    egen plf0011 = rowtotal(plf0011_v1 plf0011_v2)
     * exclude Other Country labelled for Country Born In in pl
     replace plf0011 = -2 if plf0011 == 7
     local stubvar = "plj0018 plf0011 plj0023"
@@ -461,17 +362,17 @@ foreach g in `gender' {
 
     duplicates drop pid, force
     rename (pid) (`g'nr)
-    keep `g'nr `g'anclink `g'secgen `g'immiyear `g'age `g'alive `g'stay
+    keep `g'nr `g'anclink `g'secgen `g'immiyear
     tempfile `g'postbio
     save ``g'postbio'
     restore
-    
 }
 
 * merging the linking information and sort
 mer m:1 fnr using `fpostbio', keep(master match) nogen
 mer m:1 mnr using `mpostbio', keep(master match) nogen
 sort pid syear
+
 * replace parental information about ancestry with mother's
 *   country of origin from the linking where missing
 replace ancestry8 = manclink if (ancestry8 == 3 & ///
@@ -489,12 +390,137 @@ replace mnative = 0 if !missing(mimmiyear)
 
 * Start Merging of the different steps
 g ancestry = ancestry1
-
 forvalues i = 2/8 {
     * replace in sequence from the information we found before
     replace ancestry = ancestry`i' if (ancestry == 3 & ///
         (!missing(ancestry) & ancestry > 3)) | (ancestry == 222 & ///
         (!missing(ancestry) & ancestry != 222)) | missing(ancestry)
+}
+
+tempfile temp
+save `temp'
+
+* //WIP We are trying to integrate length of stay and parent age
+
+* analyse the migration spell data containing the migration history of a 
+*   subset of 2013-2015 Wave individuals, to find out whether the parent has
+*   been in Germany before the recorded immigration year in the tracking dataset
+u "${SOEP_PATH}/migspell.dta", clear
+* recode missing flags for the variables of interest
+mvdecode starty move nspells mignr, mv(-8/-1 = .)
+* copy the year after the current line, overlapping does not matter
+g yearafter = starty[_n+1]
+* calculate the difference between the starting year of the spell and
+*   the consecutive move if parent has move to Germany from another country
+*   (in n years format)
+bys pid : g aux1 = yearafter - starty if move == 1
+* generate index of number of total moves
+g aux2 = nspells - 1
+* shift the number of years in aux1 if it is not the last move to Germany
+g aux3 = aux1 if aux2 != mignr
+* calculate the total years of stay in Germany before settling
+bys pid : egen addyears = total(aux3)
+keep pid addyears
+duplicates drop pid, force
+* merge with the exit dataset to see whether some people are still alive
+*   but they have migrated from Germany to recover the last spell year
+mer 1:m pid using "${SOEP_PATH}/pbr_exit.dta", keepus(yperg ylint syear)
+mvdecode yperg ylint, mv(-8/-1 = .)
+g lastyear = ylint if yperg == 5 & ylint != 0
+* assume that last year is the survey year if no ylint
+replace lastyear = syear if yperg == 5 & missing(lastyear) 
+* it is safe to keep one observation of the identifier to
+*   preserve the last available year before moving from Germany
+duplicates drop pid if _m == 2, force
+keep pid addyears lastyear
+tempfile migspell_exit
+save `migspell_exit', replace
+
+local gender = "f m"
+foreach g in `gender' {
+    u "${SOEP_PATH}/bioparen.dta", clear
+    local varlist = "`g'ybirth `g'nr `g'ydeath"
+    mvdecode `varlist', mv(-8/-1 = .)
+    keep persnr `varlist'
+    rename (persnr `g'nr) (kchild pid)
+
+    preserve
+    * save parents with no key
+    keep if missing(pid)
+    tempfile `g'nopid
+    save ``g'nopid'
+    restore
+
+    * drop parent with no key and keep just the key
+    drop if missing(pid)
+    duplicates drop pid, force
+    * correct inconsistencies in year of birth : tracking age is preferred
+    mer 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
+        keepus(gebjahr) keep(match) nogen
+    replace `g'ybirth = gebjahr if missing(`g'ybirth) | `g'ybirth != gebjahr
+    duplicates drop pid, force
+    * look for matches with the created migration and exit history dataset
+    mer 1:1 pid using `migspell_exit', keep(master match) nogen
+    * append back the parents not in the survey with biographical information
+    append using ``g'nopid'
+
+    * merge back to the big dataset using children identifiers
+    rename (kchild pid) (pid `g'nr)
+    mer 1:m pid using `temp', keep(using match) nogen
+
+    ****************************************************************************
+    *    parent's age : missing if parent is dead or missing year of birth     *
+    ****************************************************************************
+
+    g `g'age = syear - `g'ybirth if syear <= `g'ydeath
+    * generate a dummy if the parent is alive
+    g `g'alive = (!missing(`g'age)) & (!missing(`g'ybirth))
+
+    ****************************************************************************
+    *                    parent's length of stay calculation                   *
+    ****************************************************************************
+
+    sort pid syear
+    * find first and last year in the survey for the children
+    bys pid : egen maxyear = max(syear)
+    bys pid : egen minyear = min(syear)
+    * if there is no ending year from the migration spell data, the last year
+    *   is simply given by the survey year of the last wave of the children
+    replace lastyear = maxyear if missing(lastyear)
+    * if the parent is dead before the last year, replace the date
+    replace lastyear = `g'ydeath if `g'ydeath < lastyear
+    * replace missing additional years to zero for the summation
+    replace addyears = 0 if missing(addyears)
+    * counter starting from zero that increases the length of stay
+    bys pid : g counter1 = syear - minyear
+    * incremental counter for the presence in the survey
+    bys pid : g counter2 = _n
+    * starting length of stay in Germany, which is given by the difference 
+    *   between the year of exit/death and the immigration year if the former
+    *   happens to be before the first survey year of the children, otherwise
+    *   the difference between the first survey year and immigration year
+    g styear  = cond(lastyear <= minyear, ///
+        lastyear - `g'immiyear, minyear - `g'immiyear)
+    * create the pointer at which the counting of additional years of stay
+    *   should stop: a) save the array cell at which the survey year is the
+    *   year of exit/death or the first cell if the year of exit/death is
+    *   before the entrance of the children in the panel; b) check that the
+    *   pointer exists, otherwise check whether there is a jump in the panel;
+    *   c) copy the pointer for each survey year of the children.
+    g aux = counter2 ///
+        if lastyear == syear | (syear == minyear & lastyear <= minyear)
+    bys pid : replace aux = counter2 if missing(aux) & ///
+        (lastyear[_n] < syear[_n] & lastyear[_n-1] > syear[_n-1])
+    bys pid : egen pointer = total(aux)
+    * calculate length of stay = years before last migration to Germany +
+    *   + starting length of stay + additional years when children in survey
+    g `g'stay = addyears + styear + counter1
+    * stop counting at the pointed cell of the pid array
+    bys pid : replace `g'stay = `g'stay[pointer] if syear > lastyear | ///
+        (!missing(pointer) & (syear == minyear & lastyear <= minyear))
+    drop counter* pointer aux addyears lastyear styear minyear maxyear gebjahr
+    tempfile temp
+    save `temp'
 }
 
 ********************************************************************************
@@ -505,11 +531,11 @@ forvalues i = 2/8 {
 replace ancestry = 165 if ancestry == 3
 replace ancestry = 22  if ancestry == 222
 
-* Merge Benelux with Belgium
+* merge Benelux with Belgium
 replace ancestry = 117 if ancestry == 12
-* Merge Chechnya with Mother Russia
+* merge Chechnya with Mother Russia
 replace ancestry = 32  if ancestry == 188
-* Merge Albania with Kosovo-Albania
+* merge Albania with Kosovo-Albania
 replace ancestry = 140 if ancestry == 75
 
 * correct for no nationality residuals eventually

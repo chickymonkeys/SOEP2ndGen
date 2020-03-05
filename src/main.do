@@ -30,13 +30,24 @@ gl MAKE_DIR   = 1 /* = 1 when need to create workspace folders */
 gl ISO_CODES  = 1 /* = 1 when need to generate ISO codes table */
 
 ********************************************************************************
+* Dependencies                                                                 *
+********************************************************************************
+
+if ${ISO_CODES} {
+    capture ssc install kountry
+    capture ssc install labutil
+}
+
+********************************************************************************
 * Environment Variables Definition                                             *
 ********************************************************************************
 
 * define the absolute PATHNAME to the workspace and SOEP Data
 gl DIR_NAME      = "SOEP2ndGen"
-gl BASE_PATH     = "/home/`c(username)'/Documents/Projects/${DIR_NAME}"
-gl SOEP_PATH     = "/run/media/stargate/Data/SOEP"
+* gl BASE_PATH     = "/home/`c(username)'/Documents/Projects/${DIR_NAME}"
+* gl SOEP_PATH     = "/run/media/stargate/Data/SOEP"
+gl BASE_PATH     = "~/Documents/Projects/${DIR_NAME}"
+gl SOEP_PATH     = "~/Documents/Data/SOEP"
 gl SOEP_PATH_RAW = "${SOEP_PATH}/raw"
 
 local base   = "${BASE_PATH}"
@@ -67,12 +78,14 @@ gl T_STRING = subinstr("${T_STRING}", " ", "_", .)
 * open log file
 capture log using "${LOG_PATH}/${DIR_NAME}_`filename'_${T_STRING}", text replace
 
+* move to the workspace (just in case)
+cd "${BASE_PATH}"
+
 ********************************************************************************
 * When the Flag is ON -> Run the Script to create ISO 3166-1 Numeric Table     *
 ********************************************************************************
 
 if ${ISO_CODES} {
-    capture ssc install kountry
     do "${UTIL_PATH}/isocodes.do"
 }
 
