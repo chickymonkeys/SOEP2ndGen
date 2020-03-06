@@ -407,8 +407,6 @@ save `temp'
 *   some correction using the year of birth in the tracking dataset.           *
 ********************************************************************************
 
-* //WIP We are trying to integrate length of stay and parent age
-
 * analyse the migration spell data containing the migration history of a 
 *   subset of 2013-2015 Wave individuals, to find out whether the parent has
 *   been in Germany before the recorded immigration year in the tracking dataset
@@ -446,41 +444,60 @@ save `migspell_exit', replace
 local gender = "f m"
 foreach g in `gender' {
     u "${SOEP_PATH}/bioparen.dta", clear
-    local varlist = "`g'ybirth `g'nr `g'ydeath"
+    * retrieve year of birth and death for the parent
+    local varlist = "`g'nr `g'ybirth `g'ydeath"
+    * clean missing values
     mvdecode `varlist', mv(-8/-1 = .)
     keep persnr `varlist'
-    rename (persnr `g'nr) (kchild pid)
+    rename persnr pid
 
     preserve
-    * save parents with no key
-    keep if missing(pid)
+    * save parents year of birth, death and child identifier
+    *   when there is no link with the survey
+    keep if missing(`g'nr)
     tempfile `g'nopid
     save ``g'nopid'
     restore
+   
+    * drop parent with no key
+    drop if missing(`g'nr)
+    drop pid
+    rename `g'nr pid
+    * keep parent key, year of birth and death
+    duplicates drop pid, force
 
-    * drop parent with no key and keep just the key
-    drop if missing(pid)
-    duplicates drop pid, force
-    * correct inconsistencies in year of birth : tracking age is preferred
-    mer 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
-        keepus(gebjahr) keep(match) nogen
-    replace `g'ybirth = gebjahr if missing(`g'ybirth) | `g'ybirth != gebjahr
-    duplicates drop pid, force
     * look for matches with the created migration and exit history dataset
     mer 1:1 pid using `migspell_exit', keep(master match) nogen
+    
+    * correct inconsistencies in year of birth using the tracking dataset
+    mer 1:m pid using "${SOEP_PATH}/ppathl.dta", ///
+        keepus(gebjahr) keep(master match) nogen
+    mvdecode gebjahr, mv(-8/-1 = .)
+    * year of birth in the tracking dataset is preferred
+    replace `g'ybirth = gebjahr ///
+        if missing(`g'ybirth) | (`g'ybirth != gebjahr & !missing(gebjahr))
+    * collapse to keep all the variables for pid
+    collapse (mean) `g'ybirth `g'ydeath addyears lastyear, by(pid)
+    rename pid `g'nr
+    * merge back to the biographical dataset to get the child identifier
+    *   one parent may correspond to more children
+    mer 1:m `g'nr using "${SOEP_PATH}/bioparen.dta", ///
+        keepus(persnr) keep(match) nogen
+    rename persnr pid
+
     * append back the parents not in the survey with biographical information
     append using ``g'nopid'
-
-    * merge back to the big dataset using children identifiers
-    rename (kchild pid) (pid `g'nr)
+    * merge back to the children dataset
     mer 1:m pid using `temp', keep(using match) nogen
 
     ****************************************************************************
     *    parent's age : missing if parent is dead or missing year of birth     *
     ****************************************************************************
 
+    * age is survey year minus year of birth, when the parent is not dead
+    *   in case he is not dead the value is missing, so +inf
     g `g'age = syear - `g'ybirth if syear <= `g'ydeath
-    * generate a dummy if the parent is alive
+    * generate a dummy equal to one whether the parent is alive
     g `g'alive = (!missing(`g'age)) & (!missing(`g'ybirth))
 
     ****************************************************************************
@@ -525,9 +542,10 @@ foreach g in `gender' {
     * stop counting at the pointed cell of the pid array
     bys pid : replace `g'stay = `g'stay[pointer] if syear > lastyear | ///
         (!missing(pointer) & (syear == minyear & lastyear <= minyear))
-    drop counter* pointer aux addyears lastyear styear minyear maxyear gebjahr
+    drop counter* pointer aux addyears lastyear styear minyear maxyear
     tempfile temp
     save `temp'
+    save "${DATA_PATH}/`g'temp.dta", replace
 }
 
 ********************************************************************************
@@ -570,12 +588,17 @@ label variable fage      "Father's Current Age"
 label variable mage      "Mother's Current Age"
 label variable falive    "1 = Father is still alive"
 label variable malive    "1 = Mother is still alive"
-
+label variable fybirth   "Father's Year of Birth"
+label variable mybirth   "Mother's Year of Birth"
+label variable fydeath   "Father's Year of Death"
+label variable mydeath   "Mother's Year of Death"
 label language DE
 
 * There are some intra-regions like Kurdistan, Chechnya
-order pid syear ancestry arefback ?native ?secgen ?immiyear ?stay ?age ?alive
-keep  pid syear ancestry arefback ?native ?secgen ?immiyear ?stay ?age ?alive 
+order pid syear ancestry arefback ?native ?secgen ///
+    ?immiyear ?stay ?age ?alive ?ybirth ?ydeath
+keep  pid syear ancestry arefback ?native ?secgen ///
+    ?immiyear ?stay ?age ?alive ?ybirth ?ydeath
 drop if missing(ancestry)
 
 label data "SOEP Panel of Second-Generation Individuals with Ancestry"
