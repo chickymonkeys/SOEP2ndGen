@@ -506,6 +506,7 @@ GitHub.sublime-settings
 
 ### VisualStudioCode ###
 # I do not want to syncronize the settings of VSCode
+.vscode
 .vscode/*
 # !.vscode/settings.json
 # !.vscode/tasks.json
