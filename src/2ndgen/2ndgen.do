@@ -3,7 +3,7 @@
 * Filename: 2ndgen.do                                                          *
 * Description: .do file to create the longitudinal series of second-generation *
 *   migrants at individual level retrieving information from the different     *
-*   datasets included in the German Socio-Economic Panel                       *
+*   datasets included in the German Socio-Economic Panel.                      *
 *                                                                              *
 ********************************************************************************
 
@@ -399,6 +399,13 @@ forvalues i = 2/8 {
 
 tempfile temp
 save `temp'
+
+********************************************************************************
+* Retrieve the parents' length of stay in Germany and their age, using the     *
+*   spell dataset of migration for 2013-2015 Waves, the latest year of         *
+*   immigration, the year of birth and death from the biographical dataset and *
+*   some correction using the year of birth in the tracking dataset.           *
+********************************************************************************
 
 * //WIP We are trying to integrate length of stay and parent age
 

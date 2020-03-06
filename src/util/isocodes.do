@@ -1,10 +1,13 @@
 ********************************************************************************
 *                                                                              *
 * Filename: isocodes.do                                                        *
-* Description: a script that uses the command kountry in order to harmonize    *
-*   the country names to the one of the SOEP and the country codes to the ISO  *
-*   3166 numeric standard. This allows us to merge the SOEP with country       *
-*   specific datasets.                                                         *
+* Description: this script exploits the user-written command 'kountry' to      *
+*   create a reference dataset which contains the country names included in    *
+*   the SOEP, but matching the SOEP country codes with new country codes       *
+*   obtained using the Standard ISO 3166-1 Numeric. Using this reference       *
+*   dataset, we can harmonise the country codes to merge the SOEP with other   *
+*   cross-country specific datasets (e.g. Laeven and Valencia, etc. ).         *
+*                                                                              *
 * P.S.: Before merging, switch the label language to English!                  *
 *                                                                              *
 ********************************************************************************

@@ -1,6 +1,6 @@
 ********************************************************************************
 *                                                                              *
-* Title:     SOEP Second-Genration Immigrants Identification Script            *
+* Title:     SOEP2ndGen: Second-Generation Immigrants Ancestry Identification  *
 * Author:    Alessandro Pizzigolotto (NHH)                                     *
 * Language:  Stata (sigh)                                                      *
 * Version:   0.1 (alpha)                                                       *
