@@ -545,7 +545,6 @@ foreach g in `gender' {
     drop counter* pointer aux addyears lastyear styear minyear maxyear
     tempfile temp
     save `temp'
-    save "${DATA_PATH}/`g'temp.dta", replace
 }
 
 ********************************************************************************
