@@ -10,17 +10,13 @@
 loc filename = "main"
 
 ********************************************************************************
-* Preliminary Commands                                                         *
+* Specify STATA Settings                                                       *
 ********************************************************************************
+
+version 15
 clear all
 capture log close
 set more off
-
-* for older version of Stata
-set matsize 11000
-
-* for Stata in my poor Linux
-set max_memory 6g
 
 ********************************************************************************
 * Utility Flags Definition                                                     *
